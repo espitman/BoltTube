@@ -133,9 +133,19 @@ final class ServerController {
     }
 
     func pasteFromClipboard() {
-        if let value = NSPasteboard.general.string(forType: .string) {
-            videoURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pb = NSPasteboard.general
+        // Try plain string first, then fallback to URL type
+        let value = pb.string(forType: .string)
+            ?? pb.string(forType: .URL)
+            ?? pb.string(forType: NSPasteboard.PasteboardType("public.url"))
+        
+        if let value = value {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            appendLog("Pasted: \(trimmed.prefix(60))...")
+            videoURL = trimmed
             scheduleQualityRefresh()
+        } else {
+            appendLog("Clipboard is empty or contains non-text content.")
         }
     }
 

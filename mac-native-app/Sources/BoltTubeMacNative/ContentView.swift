@@ -163,15 +163,24 @@ struct ContentView: View {
                                 .foregroundStyle(slate900)
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 14)
+                                .onSubmit {
+                                    controller.scheduleQualityRefresh()
+                                }
                             
-                            Button("Paste") {
-                                controller.pasteFromClipboard()
+                            Button {
+                                if let s = NSPasteboard.general.string(forType: .string) {
+                                    controller.videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    controller.scheduleQualityRefresh()
+                                }
+                            } label: {
+                                Text("Paste")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 28)
+                                    .padding(.vertical, 14)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 28)
-                            .padding(.vertical, 14)
                             .background(accentRed)
                         }
                         .background(Color.white)
