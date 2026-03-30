@@ -52,6 +52,7 @@ data class RemoteFormat(
 data class ResolveResponse(
     val title: String = "",
     val formats: List<RemoteFormat> = emptyList(),
+    val thumbnailUrl: String = "",
 )
 
 @Serializable
@@ -68,6 +69,7 @@ data class MediaSummary(
     val streamUrl: String,
     val size: String,
     val createdAt: String,
+    val thumbnailUrl: String? = null,
 )
 
 @Serializable
@@ -84,6 +86,7 @@ data class BridgeUiState(
     val savedMessage: String = "",
     val formats: List<RemoteFormat> = emptyList(),
     val selectedFormatId: String = "best",
+    val thumbnailUrl: String = "",
     val library: List<MediaSummary> = emptyList(),
     val currentStreamUrl: String = "",
 )
@@ -151,6 +154,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 uiState = uiState.copy(
                     title = response.title,
+                    thumbnailUrl = response.thumbnailUrl,
                     formats = response.formats,
                     selectedFormatId = response.formats.firstOrNull()?.id ?: "best",
                     status = BridgeStatus.Idle,

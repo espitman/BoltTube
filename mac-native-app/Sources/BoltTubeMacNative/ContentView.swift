@@ -27,7 +27,7 @@ struct ContentView: View {
                 rightRail(metrics: metrics)
             }
         }
-        .frame(minWidth: 960, minHeight: 560)
+        .frame(minWidth: 960, minHeight: 640)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea()
@@ -356,7 +356,7 @@ struct ContentView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(controller.libraryItems.prefix(10)) { item in
-                            RecentCardCompact(title: item.fileName) {
+                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl) {
                                 itemToDelete = item
                             }
                         }
@@ -436,16 +436,34 @@ extension View {
 
 struct RecentCardCompact: View {
     let title: String
+    let thumbnailUrl: String?
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.gray.opacity(0.1))
-                .frame(width: 68, height: 44)
-                .overlay {
-                    Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11))
+            ZStack {
+                if let thumb = thumbnailUrl, !thumb.isEmpty {
+                    AsyncImage(url: URL(string: thumb)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        case .failure:
+                            Color.gray.opacity(0.1)
+                                .overlay { Image(systemName: "play.slash.fill").font(.system(size: 10)).foregroundStyle(.gray) }
+                        default:
+                            Color.gray.opacity(0.05)
+                        }
+                    }
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.1))
+                        .overlay {
+                            Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11))
+                        }
                 }
+            }
+            .frame(width: 68, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Text(title)
                 .font(.system(size: 12, weight: .semibold))

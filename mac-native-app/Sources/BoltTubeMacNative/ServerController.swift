@@ -8,6 +8,7 @@ struct MediaLibraryItem: Codable, Identifiable, Hashable {
     let streamUrl: String
     let size: String
     let createdAt: String
+    let thumbnailUrl: String?
 }
 
 struct MediaLibraryResponse: Codable {
@@ -245,7 +246,6 @@ final class ServerController {
 
     func deleteItem(id: String) async {
         guard let item = libraryItems.first(where: { $0.id == id }) else { return }
-        let fileURL = URL(fileURLWithPath: item.streamUrl.isEmpty ? "" : downloadDirectory.appendingPathComponent(item.fileName).path)
         // Try to remove using the fileName from downloadDirectory
         let path = downloadDirectory.appendingPathComponent(item.fileName)
         try? FileManager.default.removeItem(at: path)

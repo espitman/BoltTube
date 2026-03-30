@@ -49,6 +49,7 @@ class MediaItem:
     size: str
     created_at: str
     source_url: str
+    thumbnail_url: str
 
 
 class MediaLibrary:
@@ -90,6 +91,7 @@ class MediaLibrary:
                 size=readable_size(file.stat().st_size),
                 created_at=created_at,
                 source_url="",
+                thumbnail_url="",
             )
         self._save()
 
@@ -104,6 +106,7 @@ class MediaLibrary:
                     "streamUrl": item.stream_url,
                     "size": item.size,
                     "createdAt": item.created_at,
+                    "thumbnailUrl": item.thumbnail_url,
                 }
                 for item in items
             ]
@@ -113,7 +116,7 @@ class MediaLibrary:
             self._sync_disk()
             return self._items.get(media_id)
 
-    def add(self, *, source_url: str, file_path: Path) -> MediaItem:
+    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "") -> MediaItem:
         with self._lock:
             media_id = f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
             final_path = file_path.with_name(f"{media_id}{file_path.suffix}")
@@ -126,6 +129,7 @@ class MediaLibrary:
                 size=readable_size(final_path.stat().st_size),
                 created_at=now_iso(),
                 source_url=source_url,
+                thumbnail_url=thumbnail_url,
             )
             self._items[item.id] = item
             self._save()
@@ -199,7 +203,7 @@ class BridgeService:
             temp_name=temp_name,
         )
 
-        item = self.library.add(source_url=url, file_path=file_path)
+        item = self.library.add(source_url=url, file_path=file_path, thumbnail_url=yt.thumbnail_url or "")
         return {
             "id": item.id,
             "streamUrl": item.stream_url,
@@ -256,7 +260,7 @@ class BridgeService:
             progress_callback=on_progress,
             emit_events=True,
         )
-        item = self.library.add(source_url=url, file_path=file_path)
+        item = self.library.add(source_url=url, file_path=file_path, thumbnail_url=yt.thumbnail_url or "")
         return {
             "id": item.id,
             "streamUrl": item.stream_url,

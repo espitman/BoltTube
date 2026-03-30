@@ -1,15 +1,37 @@
-import androidx.compose.foundation.shape.CircleShape
+package ir.boum.bolttube
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+import coil.compose.AsyncImage
+import ir.boum.bolttube.ui.theme.BoltTubeTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -35,8 +57,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BoltTubeScreen(viewModel: MainViewModel) {
-    val state by remember { derivedStateOf { viewModel.uiState } }
-    val scrollState = rememberScrollState()
+    val state = viewModel.uiState
 
     Scaffold(
         topBar = {
@@ -51,7 +72,7 @@ private fun BoltTubeScreen(viewModel: MainViewModel) {
                         Text(
                             text = "Remote Media Controller",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary.opacity(0.7f)
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                         )
                     }
                 },
@@ -90,7 +111,7 @@ private fun BoltTubeScreen(viewModel: MainViewModel) {
 
             if (state.title.isNotBlank()) {
                 item {
-                    VideoPreviewCard(title = state.title)
+                    VideoPreviewCard(title = state.title, thumbnailUrl = state.thumbnailUrl)
                 }
             }
 
@@ -241,26 +262,39 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun VideoPreviewCard(title: String) {
+private fun VideoPreviewCard(title: String, thumbnailUrl: String) {
     Surface(
         color = MaterialTheme.colorScheme.primary.opacity(0.1f),
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "Target Content",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (thumbnailUrl.isNotBlank()) {
+                AsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(width = 120.dp, height = 68.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Target Content",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -380,7 +414,7 @@ private fun LibrarySection(
         } else {
             items.forEach { item ->
                 LibraryItemRow(item = item, onPlay = { onPlay(item) })
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), alpha = 0.5f)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
             }
         }
     }
@@ -438,14 +472,23 @@ private fun LibraryItemRow(
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.size(48.dp)
+            modifier = Modifier.size(64.dp, 44.dp)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Default.PlayArrow, 
-                    contentDescription = null, 
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+            if (!item.thumbnailUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = item.thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
+            } else {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.PlayArrow, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
         }
 
