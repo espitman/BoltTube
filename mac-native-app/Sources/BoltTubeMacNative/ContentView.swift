@@ -27,7 +27,7 @@ struct ContentView: View {
                 rightRail(metrics: metrics)
             }
         }
-        .frame(minWidth: 960, minHeight: 640)
+        .frame(minWidth: 920, minHeight: 480)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea()
@@ -283,22 +283,43 @@ struct ContentView: View {
                             }
                         }
 
-                        // Download / Cancel button
+                        // Download / Progress Section
                         let isReady = !controller.formats.isEmpty && !controller.isResolvingQualities && !controller.isDownloading
 
                         if controller.isDownloading {
-                            Button(action: { controller.cancelDownload() }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "xmark.circle.fill")
-                                    Text("Cancel Download")
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack {
+                                        Text(controller.downloadProgressText.isEmpty ? "Downloading..." : controller.downloadProgressText)
+                                            .font(.system(size: 10, weight: .bold)).foregroundStyle(slate600)
+                                            .lineLimit(1)
+                                        Spacer()
+                                        Text("\(Int(controller.downloadProgress * 100))%")
+                                            .font(.system(size: 11, weight: .black)).foregroundStyle(accentBlue)
+                                    }
+                                    
+                                    GeometryReader { gp in
+                                        ZStack(alignment: .leading) {
+                                            Capsule().fill(slate900.opacity(0.05)).frame(height: 6)
+                                            Capsule().fill(accentBlue)
+                                                .frame(width: gp.size.width * controller.downloadProgress, height: 6)
+                                        }
+                                    }.frame(height: 6)
                                 }
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity).frame(height: 46)
-                                .background(Color(red: 0.75, green: 0.2, blue: 0.2))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                
+                                Button(action: { controller.cancelDownload() }) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(Color.red.opacity(0.8))
+                                        .symbolRenderingMode(.hierarchical)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+                            .frame(maxWidth: .infinity).frame(height: 46)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1))
                         } else {
                             Button(action: { Task { await controller.downloadVideo() } }) {
                                 HStack(spacing: 8) {
@@ -313,31 +334,6 @@ struct ContentView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(!isReady)
-                        }
-
-                        // Progress bar
-                        if controller.isDownloading || controller.downloadProgress > 0 {
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Text(controller.downloadProgressText.isEmpty ? "Downloading..." : controller.downloadProgressText)
-                                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(slate600)
-                                    Spacer()
-                                    Text("\(Int(controller.downloadProgress * 100))%")
-                                        .font(.system(size: 13, weight: .bold)).foregroundStyle(accentBlue)
-                                }
-                                GeometryReader { gp in
-                                    ZStack(alignment: .leading) {
-                                        Capsule().fill(Color.gray.opacity(0.1)).frame(height: 8)
-                                        Capsule().fill(accentBlue)
-                                            .frame(width: gp.size.width * controller.downloadProgress, height: 8)
-                                    }
-                                }
-                                .frame(height: 8)
-                            }
-                            .padding(18)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .shadow(color: .black.opacity(0.03), radius: 8, y: 4)
                         }
                     }
                 }
@@ -372,26 +368,6 @@ struct ContentView: View {
                         }
                     }
                 }
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Activity Log")
-                    .font(.system(size: 14, weight: .bold)).foregroundStyle(slate900)
-
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle().fill(slate900).frame(width: 32, height: 32)
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Status").font(.system(size: 12, weight: .bold)).foregroundStyle(slate900)
-                        Text(controller.isDownloading ? "Download active" : controller.isResolvingQualities ? "Analyzing link..." : "Idle")
-                            .font(.system(size: 11)).foregroundStyle(slate600)
-                    }
-                }
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.gray.opacity(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
             }
 
             Spacer()

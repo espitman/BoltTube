@@ -207,6 +207,12 @@ final class ServerController {
             downloadProgressText = "Download complete"
             appendLog("Saved \(response.fileName)")
             await refreshLibrary()
+            videoURL = ""
+            resolvedTitle = ""
+            resolvedThumbnailUrl = ""
+            resolvedDurationSeconds = 0
+            formats = []
+            selectedFormatID = "best"
         } catch {
             appendLog("Download failed: \(error.localizedDescription)")
             downloadProgressText = "Download failed"

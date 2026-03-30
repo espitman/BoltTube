@@ -194,6 +194,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 refreshLibraryInternal()
                 uiState = uiState.copy(
+                    url = "",
+                    title = "",
+                    thumbnailUrl = "",
+                    formats = emptyList(),
                     currentStreamUrl = absoluteMediaUrl(response.streamUrl),
                     status = BridgeStatus.Idle,
                     message = "Downloaded on Mac. Ready to play on the phone.",
