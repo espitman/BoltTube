@@ -57,10 +57,13 @@ struct RemoteFormat: Codable, Identifiable, Hashable {
     let id: String
     let title: String
     let details: String
+    let filesize: String
 }
 
 struct ResolveResponse: Codable {
     let title: String
+    let thumbnailUrl: String
+    let durationSeconds: Int
     let formats: [RemoteFormat]
 }
 
@@ -69,6 +72,8 @@ struct ResolveResponse: Codable {
 final class ServerController {
     var videoURL = ""
     var resolvedTitle = ""
+    var resolvedThumbnailUrl = ""
+    var resolvedDurationSeconds: Int = 0
     var lastDownloadedFileName = ""
     var formats: [RemoteFormat] = []
     var selectedFormatID = "best"
@@ -348,8 +353,10 @@ final class ServerController {
             let response = try JSONDecoder().decode(ResolveResponse.self, from: data)
             guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }
             resolvedTitle = response.title
+            resolvedThumbnailUrl = response.thumbnailUrl
+            resolvedDurationSeconds = response.durationSeconds
             formats = response.formats
-            selectedFormatID = response.formats.first?.id ?? "best"
+            selectedFormatID = response.formats.last?.id ?? "best"
         } catch {
             appendLog("Quality load failed: \(error.localizedDescription)")
         }

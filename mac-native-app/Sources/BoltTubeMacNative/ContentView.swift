@@ -184,10 +184,51 @@ struct ContentView: View {
 
                     // Preview
                     HStack(spacing: 24) {
-                        ThumbnailBox(controller: controller)
-                            .frame(width: 170, height: 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shadow(color: .black.opacity(0.04), radius: 8, y: 4)
+                        ZStack(alignment: .bottomTrailing) {
+                            if controller.resolvedThumbnailUrl.isEmpty {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(LinearGradient(colors: [Color(white: 0.18), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
+                                    .frame(width: 200, height: 112)
+                                    .overlay {
+                                        Image(systemName: "play.fill")
+                                            .foregroundStyle(.white.opacity(0.15))
+                                            .font(.system(size: 28))
+                                    }
+                            } else {
+                                AsyncImage(url: URL(string: controller.resolvedThumbnailUrl)) { phase in
+                                    switch phase {
+                                    case .success(let image):
+                                        image
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 200, height: 112)
+                                            .clipped()
+                                    case .failure:
+                                        Color.gray.opacity(0.15)
+                                    default:
+                                        Color.gray.opacity(0.08)
+                                            .overlay { ProgressView().scaleEffect(0.8) }
+                                    }
+                                }
+                                .frame(width: 200, height: 112)
+                            }
+
+                            // Duration badge
+                            if controller.resolvedDurationSeconds > 0 {
+                                let m = controller.resolvedDurationSeconds / 60
+                                let s = controller.resolvedDurationSeconds % 60
+                                Text(String(format: "%d:%02d", m, s))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(.black.opacity(0.75))
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .padding(8)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shadow(color: .black.opacity(0.06), radius: 10, y: 4)
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text(controller.resolvedTitle.isEmpty ? "Ready for download" : controller.resolvedTitle)
@@ -225,19 +266,26 @@ struct ContentView: View {
                                         ForEach(controller.formats) { format in
                                             let isSelected = controller.selectedFormatID == format.id
                                             Button(action: { controller.selectedFormatID = format.id }) {
-                                                Text(format.title)
-                                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                                                    .foregroundStyle(isSelected ? .white : slate900)
-                                                    .padding(.horizontal, 14)
-                                                    .padding(.vertical, 10)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 8)
-                                                            .fill(isSelected ? accentBlue : Color.white)
-                                                            .overlay(
-                                                                RoundedRectangle(cornerRadius: 8)
-                                                                    .stroke(isSelected ? accentBlue : slate900.opacity(0.15), lineWidth: 1)
-                                                            )
-                                                    )
+                                                VStack(spacing: 2) {
+                                                    Text(format.title)
+                                                        .font(.system(size: 13, weight: isSelected ? .black : .bold))
+                                                        .foregroundStyle(isSelected ? .white : slate900)
+                                                    if !format.filesize.isEmpty {
+                                                        Text(format.filesize)
+                                                            .font(.system(size: 10, weight: .medium))
+                                                            .foregroundStyle(isSelected ? .white.opacity(0.85) : slate600)
+                                                    }
+                                                }
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 8)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .fill(isSelected ? accentBlue : Color.white)
+                                                        .overlay(
+                                                            RoundedRectangle(cornerRadius: 8)
+                                                                .stroke(isSelected ? accentBlue : slate900.opacity(0.12), lineWidth: 1)
+                                                        )
+                                                )
                                             }
                                             .buttonStyle(.plain)
                                         }
@@ -365,24 +413,6 @@ struct ContentView: View {
 }
 
 // MARK: - Components
-
-struct ThumbnailBox: View {
-    let controller: ServerController
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            LinearGradient(colors: [Color(white: 0.2), Color(white: 0.1)], startPoint: .top, endPoint: .bottom)
-            
-            Text("12:45")
-                .font(.system(size: 11, weight: .bold))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(.black.opacity(0.8))
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(10)
-        }
-    }
-}
 
 struct RecentCardCompact: View {
     let title: String

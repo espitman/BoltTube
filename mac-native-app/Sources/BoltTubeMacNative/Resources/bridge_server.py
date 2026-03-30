@@ -157,7 +157,8 @@ class BridgeService:
                 continue
             selected_by_resolution[resolution] = stream
 
-        for resolution in self.TARGET_RESOLUTIONS:
+        # Build formats in ascending order (lowest first = left in UI)
+        for resolution in reversed(self.TARGET_RESOLUTIONS):
             stream = selected_by_resolution.get(resolution)
             if stream is None:
                 continue
@@ -171,11 +172,15 @@ class BridgeService:
                     "id": str(stream.itag),
                     "title": resolution,
                     "details": " • ".join(part for part in details if part),
+                    "filesize": readable_size(stream.filesize or stream.filesize_approx),
                 }
             )
 
+        duration_seconds = getattr(yt, "length", None) or 0
         return {
             "title": yt.title,
+            "thumbnailUrl": yt.thumbnail_url or "",
+            "durationSeconds": int(duration_seconds),
             "formats": formats,
         }
 
