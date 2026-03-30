@@ -160,93 +160,79 @@ struct ContentView: View {
                             TextField("Paste YouTube video link here...", text: $controller.videoURL)
                                 .textFieldStyle(.plain)
                                 .font(.system(size: 14))
+                                .foregroundStyle(slate900)
                                 .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
+                                .padding(.vertical, 14)
                             
-                            Button("Analyze") {
+                            Button("Paste") {
                                 controller.pasteFromClipboard()
                             }
                             .buttonStyle(.plain)
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 28)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, 14)
                             .background(accentRed)
                         }
                         .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 14)
+                            RoundedRectangle(cornerRadius: 12)
                                 .stroke(Color.black.opacity(0.1), lineWidth: 1)
                         }
                     }
 
                     // Preview
-                    HStack(spacing: 28) {
+                    HStack(spacing: 24) {
                         ThumbnailBox(controller: controller)
-                            .frame(width: 220, height: 124)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .shadow(color: .black.opacity(0.05), radius: 10, y: 5)
+                            .frame(width: 170, height: 96)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(color: .black.opacity(0.04), radius: 8, y: 4)
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(controller.resolvedTitle.isEmpty ? "Video Title Placeholder" : controller.resolvedTitle)
-                                .font(.system(size: 22, weight: .black))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(controller.resolvedTitle.isEmpty ? "Ready for download" : controller.resolvedTitle)
+                                .font(.system(size: 18, weight: .bold))
                                 .foregroundStyle(slate900)
                                 .lineLimit(2)
-                            
-                            HStack(spacing: 8) {
-                                Circle().fill(Color.gray.opacity(0.2)).frame(width: 18, height: 18)
-                                Text("Wanderlust Channel")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(slate600)
-                            }
                         }
                     }
 
                     // Settings Group
-                    VStack(alignment: .leading, spacing: 24) {
-                        HStack(spacing: 32) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack(alignment: .bottom, spacing: 20) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Quality Preference")
                                     .font(.system(size: 13, weight: .bold))
                                     .foregroundStyle(slate600)
-                                
+
                                 Picker("", selection: $controller.selectedFormatID) {
                                     if controller.formats.isEmpty {
-                                        Text("Best Available").tag("best")
+                                        Text("— no formats —").tag("best")
                                     } else {
                                         ForEach(controller.formats) { format in
                                             Text(format.title).tag(format.id)
                                         }
                                     }
                                 }
-                                .pickerStyle(.menu)
                                 .labelsHidden()
-                                .frame(width: 220)
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay { RoundedRectangle(cornerRadius: 10).stroke(Color.black.opacity(0.08)) }
+                                .frame(width: 220, height: 40)
                             }
 
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Action")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(slate600)
-                                
-                                Button(action: { Task { await controller.downloadVideo() } }) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "arrow.down")
-                                        Text("Start Import")
-                                    }
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 32)
-                                    .padding(.vertical, 12)
-                                    .background(accentBlue)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            let isReady = !controller.formats.isEmpty && !controller.isResolvingQualities
+
+                            Button(action: { Task { await controller.downloadVideo() } }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.down")
+                                    Text("Download")
                                 }
-                                .buttonStyle(.plain)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(isReady ? .white : Color.gray)
+                                .frame(width: 160, height: 40)
+                                .background(isReady ? accentBlue : Color.gray.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
+                            .buttonStyle(.plain)
+                            .disabled(!isReady)
                         }
 
                         // Progress

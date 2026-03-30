@@ -130,6 +130,7 @@ final class ServerController {
     func pasteFromClipboard() {
         if let value = NSPasteboard.general.string(forType: .string) {
             videoURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            scheduleQualityRefresh()
         }
     }
 
