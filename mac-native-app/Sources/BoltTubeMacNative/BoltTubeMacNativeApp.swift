@@ -5,7 +5,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        if let window = NSApp.windows.first {
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.toolbar = nil
+            window.titlebarSeparatorStyle = .none
+            window.isMovableByWindowBackground = true
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 }
 
@@ -17,7 +27,7 @@ struct BoltTubeMacNativeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(controller: serverController)
-                .frame(minWidth: 900, minHeight: 620)
         }
+        .windowStyle(.hiddenTitleBar)
     }
 }

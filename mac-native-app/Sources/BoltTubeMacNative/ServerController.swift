@@ -68,6 +68,7 @@ struct ResolveResponse: Codable {
 @MainActor
 final class ServerController {
     var videoURL = ""
+    var resolvedTitle = ""
     var lastDownloadedFileName = ""
     var formats: [RemoteFormat] = []
     var selectedFormatID = "best"
@@ -126,11 +127,18 @@ final class ServerController {
         NSWorkspace.shared.open(downloadDirectory)
     }
 
+    func pasteFromClipboard() {
+        if let value = NSPasteboard.general.string(forType: .string) {
+            videoURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
     func scheduleQualityRefresh() {
         qualityRefreshTask?.cancel()
 
         let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedURL.isEmpty {
+            resolvedTitle = ""
             formats = []
             selectedFormatID = "best"
             return
@@ -338,6 +346,7 @@ final class ServerController {
             )
             let response = try JSONDecoder().decode(ResolveResponse.self, from: data)
             guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }
+            resolvedTitle = response.title
             formats = response.formats
             selectedFormatID = response.formats.first?.id ?? "best"
         } catch {

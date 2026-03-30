@@ -1,59 +1,15 @@
-package ir.boum.bolttube
-
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.MediaItem
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
-import ir.boum.bolttube.ui.theme.BoltTubeTheme
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 
 class MainActivity : ComponentActivity() {
 
@@ -65,7 +21,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             BoltTubeTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     BoltTubeScreen(viewModel = viewModel)
                 }
             }
@@ -77,11 +36,29 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun BoltTubeScreen(viewModel: MainViewModel) {
     val state by remember { derivedStateOf { viewModel.uiState } }
+    val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(text = "BoltTube Bridge") },
+            LargeTopAppBar(
+                title = { 
+                    Column {
+                        Text(
+                            text = "BoltTube Bridge",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Remote Media Controller",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary.opacity(0.7f)
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.largeTopAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceVariant.opacity(0.5f)
+                )
             )
         },
     ) { innerPadding ->
@@ -89,14 +66,14 @@ private fun BoltTubeScreen(viewModel: MainViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item {
-                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Mac downloads the video with yt-dlp. Your phone only browses formats, starts the job, and plays the result.",
-                    style = MaterialTheme.typography.bodyLarge,
+                    text = "Control your Mac downloads and browse your library from anywhere on your local network.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -113,22 +90,7 @@ private fun BoltTubeScreen(viewModel: MainViewModel) {
 
             if (state.title.isNotBlank()) {
                 item {
-                    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                text = "Resolved Video",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = state.title,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                        }
-                    }
+                    VideoPreviewCard(title = state.title)
                 }
             }
 
@@ -145,57 +107,43 @@ private fun BoltTubeScreen(viewModel: MainViewModel) {
                     Button(
                         onClick = viewModel::startDownloadOnMac,
                         enabled = state.url.isNotBlank() && state.status != BridgeStatus.Downloading,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         if (state.status == BridgeStatus.Downloading) {
                             CircularProgressIndicator(
-                                modifier = Modifier
-                                    .height(18.dp)
-                                    .width(18.dp),
-                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 3.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
                             )
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Downloading on Mac...")
+                            Text("Importing on Mac...")
                         } else {
-                            Text("Download On Mac")
+                            Icon(Icons.Default.PlayArrow, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Start Import Process")
                         }
                     }
                 }
             }
 
             item {
-                StatusCard(state = state)
+                StatusBadge(state = state)
             }
 
             item {
-                LibraryHeader(
+                LibrarySection(
+                    items = state.library,
                     onRefresh = viewModel::refreshLibrary,
                     isRefreshing = state.status == BridgeStatus.Refreshing,
+                    onPlay = { viewModel.playItem(it) },
+                    currentStreamUrl = state.currentStreamUrl
                 )
             }
 
-            if (state.currentStreamUrl.isNotBlank()) {
-                item {
-                    PlayerCard(streamUrl = state.currentStreamUrl)
-                }
-            }
-
-            if (state.library.isEmpty()) {
-                item {
-                    EmptyLibraryCard()
-                }
-            } else {
-                items(state.library, key = { it.id }) { item ->
-                    LibraryItemCard(
-                        item = item,
-                        onPlay = { viewModel.playItem(item) },
-                    )
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(12.dp))
-            }
+            item { Spacer(modifier = Modifier.height(32.dp)) }
         }
     }
 }
@@ -209,34 +157,48 @@ private fun ConnectionCard(
     onResolve: () -> Unit,
     isBusy: Boolean,
 ) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    val clipboardManager = LocalClipboardManager.current
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.opacity(0.4f),
+        shape = RoundedCornerShape(28.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = "Bridge",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Link Import",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { 
+                    clipboardManager.getText()?.let { onUrlChanged(it.text) }
+                }) {
+                    Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
+                }
+            }
 
             OutlinedTextField(
                 value = state.serverUrl,
                 onValueChange = onServerUrlChanged,
-                label = { Text("Mac Server URL") },
-                placeholder = { Text("http://10.0.2.2:9864") },
+                label = { Text("Server Address") },
+                placeholder = { Text("e.g. 192.168.1.5:9864") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
 
             OutlinedTextField(
                 value = state.url,
                 onValueChange = onUrlChanged,
-                label = { Text("YouTube URL") },
-                placeholder = { Text("https://www.youtube.com/watch?v=...") },
+                label = { Text("Content URL") },
+                placeholder = { Text("https://youtube.com/...") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -246,7 +208,8 @@ private fun ConnectionCard(
             ) {
                 OutlinedButton(
                     onClick = onSave,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     Text("Save")
                 }
@@ -254,19 +217,13 @@ private fun ConnectionCard(
                 Button(
                     onClick = onResolve,
                     enabled = state.url.isNotBlank() && !isBusy,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     if (state.status == BridgeStatus.Resolving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .height(18.dp)
-                                .width(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Resolving...")
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Load Qualities")
+                        Text("Analyze Link")
                     }
                 }
             }
@@ -274,45 +231,66 @@ private fun ConnectionCard(
             if (state.savedMessage.isNotBlank()) {
                 Text(
                     text = state.savedMessage,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp)
                 )
             }
         }
     }
 }
 
+@Composable
+private fun VideoPreviewCard(title: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary.opacity(0.1f),
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Target Content",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FormatPicker(
     formats: List<RemoteFormat>,
     selectedFormatId: String,
     onSelect: (String) -> Unit,
 ) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = "Qualities",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Quality",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
 
-            formats.forEach { format ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            formats.take(4).forEach { format ->
                 FilterChip(
                     selected = selectedFormatId == format.id,
                     onClick = { onSelect(format.id) },
-                    label = {
-                        Column {
-                            Text(text = format.title)
-                            Text(
-                                text = format.details,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
+                    label = { Text(text = format.title.take(8)) },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(0.dp)
                 )
             }
         }
@@ -320,38 +298,44 @@ private fun FormatPicker(
 }
 
 @Composable
-private fun StatusCard(state: BridgeUiState) {
-    val clipboardManager = LocalClipboardManager.current
-    val tone = when (state.status) {
+private fun StatusBadge(state: BridgeUiState) {
+    val containerColor = when (state.status) {
         BridgeStatus.Failed -> MaterialTheme.colorScheme.errorContainer
-        BridgeStatus.Downloading, BridgeStatus.Resolving, BridgeStatus.Refreshing -> MaterialTheme.colorScheme.secondaryContainer
         BridgeStatus.Idle -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    
+    val contentColor = when(state.status) {
+        BridgeStatus.Failed -> MaterialTheme.colorScheme.onErrorContainer
+        BridgeStatus.Idle -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
     }
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(tone)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = "Status: ${state.status.name}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            if (state.message.isNotBlank()) {
+            Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(20.dp))
+            Column {
                 Text(
-                    text = state.message,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = state.status.name,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
                 )
-            }
-            if (state.status == BridgeStatus.Failed && state.message.isNotBlank()) {
-                OutlinedButton(
-                    onClick = { clipboardManager.setText(AnnotatedString(state.message)) },
-                ) {
-                    Text("Copy Error")
+                if (state.message.isNotBlank()) {
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -359,35 +343,44 @@ private fun StatusCard(state: BridgeUiState) {
 }
 
 @Composable
-private fun LibraryHeader(
+private fun LibrarySection(
+    items: List<MediaSummary>,
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
+    onPlay: (MediaSummary) -> Unit,
+    currentStreamUrl: String
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        HorizontalDivider()
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Mac Library",
+                text = "My Collection",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold
             )
-            OutlinedButton(onClick = onRefresh, enabled = !isRefreshing) {
-                if (isRefreshing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .height(18.dp)
-                            .width(18.dp),
-                        strokeWidth = 2.dp,
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("Refreshing...")
-                } else {
-                    Text("Refresh")
-                }
+            IconButton(onClick = onRefresh, enabled = !isRefreshing) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+            }
+        }
+
+        if (currentStreamUrl.isNotBlank()) {
+            PlayerCard(streamUrl = currentStreamUrl)
+        }
+
+        if (items.isEmpty()) {
+            Text(
+                text = "No content available. Analyze a link to start importing.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 12.dp)
+            )
+        } else {
+            items.forEach { item ->
+                LibraryItemRow(item = item, onPlay = { onPlay(item) })
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), alpha = 0.5f)
             }
         }
     }
@@ -413,90 +406,68 @@ private fun PlayerCard(streamUrl: String) {
         }
     }
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = "Now Playing",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(18.dp),
-                    ),
-            ) {
-                AndroidView(
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            player = exoPlayer
-                            useController = true
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Text(
-                text = streamUrl,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Surface(
+        color = Color.Black,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+    ) {
+        AndroidView(
+            factory = { viewContext ->
+                PlayerView(viewContext).apply {
+                    player = exoPlayer
+                    useController = true
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
 @Composable
-private fun EmptyLibraryCard() {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = "No videos yet",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = "Resolve a link, choose a quality, and download it on the Mac. The finished files will show up here for playback.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LibraryItemCard(
+private fun LibraryItemRow(
     item: MediaSummary,
     onPlay: () -> Unit,
 ) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.size(48.dp)
         ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Default.PlayArrow, 
+                    contentDescription = null, 
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.fileName,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = "${item.size} • ${item.createdAt}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Button(
-                onClick = onPlay,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Play On Phone")
-            }
+        }
+
+        IconButton(onClick = onPlay) {
+            Icon(Icons.Default.PlayArrow, contentDescription = "Play")
         }
     }
 }
+
+private fun Color.opacity(value: Float): Color = copy(alpha = value)
