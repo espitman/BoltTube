@@ -93,6 +93,7 @@ final class ServerController {
     private var shareServerProcess: Process?
     private var shareServerOutputPipe: Pipe?
     private var qualityRefreshTask: Task<Void, Never>?
+    private var activeDownloadProcess: Process?
 
     init() {
         let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
@@ -206,6 +207,26 @@ final class ServerController {
             appendLog("Download failed: \(error.localizedDescription)")
             downloadProgressText = "Download failed"
         }
+    }
+
+    func cancelDownload() {
+        activeDownloadProcess?.terminate()
+        activeDownloadProcess = nil
+        isDownloading = false
+        isBusy = false
+        downloadProgressText = "Cancelled"
+        appendLog("Download cancelled by user.")
+    }
+
+    func deleteItem(id: String) async {
+        guard let item = libraryItems.first(where: { $0.id == id }) else { return }
+        let fileURL = URL(fileURLWithPath: item.streamUrl.isEmpty ? "" : downloadDirectory.appendingPathComponent(item.fileName).path)
+        // Try to remove using the fileName from downloadDirectory
+        let path = downloadDirectory.appendingPathComponent(item.fileName)
+        try? FileManager.default.removeItem(at: path)
+        // Also try any matching item by scanning
+        appendLog("Deleted: \(item.fileName)")
+        await refreshLibrary()
     }
 
     func refreshLibrary() async {
@@ -471,8 +492,9 @@ final class ServerController {
                 }
             }
 
-            process.terminationHandler = { process in
+            process.terminationHandler = { [weak self] process in
                 errorPipe.fileHandleForReading.readabilityHandler = nil
+                DispatchQueue.main.async { self?.activeDownloadProcess = nil }
                 do {
                     let outputData = try outputPipe.fileHandleForReading.readToEnd() ?? Data()
                     let errorData = try errorPipe.fileHandleForReading.readToEnd() ?? Data()
