@@ -1,0 +1,19 @@
+.DS_Store
+.idea/
+*.iml
+
+# Android / Gradle
+**/.gradle/
+**/build/
+mac-server/bin/
+android-phone-app/local.properties
+android-phone-app/libs/ffmpeg-0.18.1.aar
+android-phone-app/libs/library-0.18.1.aar
+
+# SwiftPM / Xcode
+**/.build/
+DerivedData/
+
+# Python
+*.pyc
+__pycache__/
