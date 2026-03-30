@@ -232,6 +232,8 @@ class BridgeService:
         if audio_stream is not None:
             total_bytes += int(audio_stream.filesize or audio_stream.filesize_approx or 0)
 
+        suggested_name = sanitize_filename(yt.title or "video")
+        temp_name = f"{suggested_name}-{uuid.uuid4().hex[:8]}"
         progress_state["total"] = total_bytes
         print(
             json.dumps(
@@ -240,14 +242,13 @@ class BridgeService:
                     "title": yt.title,
                     "formatId": format_id,
                     "totalBytes": total_bytes,
+                    "tempName": temp_name,
                 }
             ),
             file=sys.stderr,
             flush=True,
         )
 
-        suggested_name = sanitize_filename(yt.title or "video")
-        temp_name = f"{suggested_name}-{uuid.uuid4().hex[:8]}"
         file_path = self._download_streams(
             yt=yt,
             stream=stream,

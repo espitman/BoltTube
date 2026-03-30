@@ -94,6 +94,9 @@ final class ServerController {
     private var shareServerOutputPipe: Pipe?
     private var qualityRefreshTask: Task<Void, Never>?
     private var activeDownloadProcess: Process?
+    private var activeDownloadTempName: String = ""
+    private var lastProgressBytes: Double = 0
+    private var lastProgressTime: Date = Date()
 
     init() {
         let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser
@@ -210,12 +213,34 @@ final class ServerController {
     }
 
     func cancelDownload() {
-        activeDownloadProcess?.terminate()
+        // Terminate the process and all its children
+        if let process = activeDownloadProcess {
+            let pid = process.processIdentifier
+            process.terminate()
+            // Also kill any child processes (e.g. ffmpeg spawned by bridge)
+            _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/pkill"), arguments: ["-TERM", "-P", "\(pid)"])
+        }
         activeDownloadProcess = nil
+
+        // Clean up partial temp files in download directory
+        let tempName = activeDownloadTempName
+        if !tempName.isEmpty {
+            let fm = FileManager.default
+            if let files = try? fm.contentsOfDirectory(atPath: downloadDirectory.path) {
+                for file in files where file.hasPrefix(tempName) {
+                    let url = downloadDirectory.appendingPathComponent(file)
+                    try? fm.removeItem(at: url)
+                    appendLog("Cleaned up partial file: \(file)")
+                }
+            }
+        }
+        activeDownloadTempName = ""
+
         isDownloading = false
         isBusy = false
+        downloadProgress = 0
         downloadProgressText = "Cancelled"
-        appendLog("Download cancelled by user.")
+        appendLog("Download cancelled.")
     }
 
     func deleteItem(id: String) async {
@@ -527,6 +552,7 @@ final class ServerController {
 
             do {
                 try process.run()
+                Task { @MainActor [weak self] in self?.activeDownloadProcess = process }
             } catch {
                 if state.markResumed() {
                     continuation.resume(throwing: error)
@@ -602,17 +628,36 @@ final class ServerController {
         switch event {
         case "starting":
             let title = payload["title"] as? String ?? "video"
+            let tempName = payload["tempName"] as? String ?? ""
             downloadProgress = 0
-            downloadProgressText = "Starting \(title)"
+            downloadProgressText = "Starting \(title)..."
+            lastProgressBytes = 0
+            lastProgressTime = Date()
+            if !tempName.isEmpty { activeDownloadTempName = tempName }
         case "progress":
             let fraction = payload["fraction"] as? Double ?? 0
             let downloadedBytes = payload["downloadedBytes"] as? Double ?? 0
             let totalBytes = payload["totalBytes"] as? Double ?? 0
             downloadProgress = min(max(fraction, 0), 1)
+
+            // Compute speed
+            let now = Date()
+            let elapsed = now.timeIntervalSince(lastProgressTime)
+            var speedText = ""
+            if elapsed > 0.2 {
+                let delta = downloadedBytes - lastProgressBytes
+                if delta > 0 {
+                    let bytesPerSec = delta / elapsed
+                    speedText = " • " + formatSpeed(bytesPerSec)
+                }
+                lastProgressBytes = downloadedBytes
+                lastProgressTime = now
+            }
+
             if totalBytes > 0 {
-                downloadProgressText = "\(Int(downloadProgress * 100))% • \(formatBytes(downloadedBytes)) / \(formatBytes(totalBytes))"
+                downloadProgressText = "\(Int(downloadProgress * 100))% • \(formatBytes(downloadedBytes)) / \(formatBytes(totalBytes))\(speedText)"
             } else {
-                downloadProgressText = "\(Int(downloadProgress * 100))%"
+                downloadProgressText = "\(Int(downloadProgress * 100))%\(speedText)"
             }
         case "merging":
             downloadProgress = 1
@@ -626,6 +671,16 @@ final class ServerController {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(value))
+    }
+
+    private func formatSpeed(_ bytesPerSec: Double) -> String {
+        let mbps = bytesPerSec / (1024 * 1024)
+        if mbps >= 1 {
+            return String(format: "%.1f MB/s", mbps)
+        } else {
+            let kbps = bytesPerSec / 1024
+            return String(format: "%.0f KB/s", kbps)
+        }
     }
 
     private func localIPAddress() -> String? {
