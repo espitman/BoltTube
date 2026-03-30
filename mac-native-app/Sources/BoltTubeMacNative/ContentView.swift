@@ -28,7 +28,7 @@ struct ContentView: View {
                 rightRail(metrics: metrics)
             }
         }
-        .frame(minWidth: 1100, minHeight: 750)
+        .frame(minWidth: 960, minHeight: 560)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea()
@@ -198,73 +198,98 @@ struct ContentView: View {
                     }
 
                     // Settings Group
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack(alignment: .bottom, spacing: 20) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Quality Preference")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(slate600)
+                    VStack(alignment: .leading, spacing: 20) {
 
-                                Picker("", selection: $controller.selectedFormatID) {
-                                    if controller.formats.isEmpty {
-                                        Text("— no formats —").tag("best")
-                                    } else {
+                        // Quality chips
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(controller.formats.isEmpty ? "Quality" : "Quality")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(slate600)
+
+                            if controller.isResolvingQualities {
+                                HStack(spacing: 8) {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Scanning...")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(slate600)
+                                }
+                                .frame(height: 40)
+                            } else if controller.formats.isEmpty {
+                                Text("Paste a link to see quality options")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(slate600.opacity(0.6))
+                                    .frame(height: 40)
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
                                         ForEach(controller.formats) { format in
-                                            Text(format.title).tag(format.id)
+                                            let isSelected = controller.selectedFormatID == format.id
+                                            Button(action: { controller.selectedFormatID = format.id }) {
+                                                Text(format.title)
+                                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                                                    .foregroundStyle(isSelected ? .white : slate900)
+                                                    .padding(.horizontal, 14)
+                                                    .padding(.vertical, 10)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 8)
+                                                            .fill(isSelected ? accentBlue : Color.white)
+                                                            .overlay(
+                                                                RoundedRectangle(cornerRadius: 8)
+                                                                    .stroke(isSelected ? accentBlue : slate900.opacity(0.15), lineWidth: 1)
+                                                            )
+                                                    )
+                                            }
+                                            .buttonStyle(.plain)
                                         }
                                     }
                                 }
-                                .labelsHidden()
-                                .frame(width: 220, height: 40)
                             }
-
-                            let isReady = !controller.formats.isEmpty && !controller.isResolvingQualities
-
-                            Button(action: { Task { await controller.downloadVideo() } }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "arrow.down")
-                                    Text("Download")
-                                }
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(isReady ? .white : Color.gray)
-                                .frame(width: 160, height: 40)
-                                .background(isReady ? accentBlue : Color.gray.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!isReady)
                         }
 
-                        // Progress
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Text("Active Task Status")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(slate600)
-                                Spacer()
-                                Text("\(Int(controller.downloadProgress * 100))%")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(accentBlue)
+                        // Download button
+                        let isReady = !controller.formats.isEmpty && !controller.isResolvingQualities
+                        Button(action: { Task { await controller.downloadVideo() } }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down")
+                                Text("Download")
                             }
-
-                            GeometryReader { gp in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.gray.opacity(0.1)).frame(height: 10)
-                                    Capsule()
-                                        .fill(accentBlue)
-                                        .frame(width: gp.size.width * controller.downloadProgress, height: 10)
-                                }
-                            }
-                            .frame(height: 10)
-
-                            Text("Processing: \(controller.isDownloading ? "Active Link Analysis" : "Idle Management")")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(slate600)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(isReady ? .white : Color.gray)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .background(isReady ? accentBlue : Color.gray.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
-                        .padding(24)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                        .shadow(color: .black.opacity(0.02), radius: 10, y: 5)
+                        .buttonStyle(.plain)
+                        .disabled(!isReady)
+
+                        // Progress bar (only when downloading)
+                        if controller.isDownloading || controller.downloadProgress > 0 {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text(controller.downloadProgressText.isEmpty ? "Downloading..." : controller.downloadProgressText)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(slate600)
+                                    Spacer()
+                                    Text("\(Int(controller.downloadProgress * 100))%")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(accentBlue)
+                                }
+                                GeometryReader { gp in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(Color.gray.opacity(0.1)).frame(height: 8)
+                                        Capsule()
+                                            .fill(accentBlue)
+                                            .frame(width: gp.size.width * controller.downloadProgress, height: 8)
+                                    }
+                                }
+                                .frame(height: 8)
+                            }
+                            .padding(18)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .shadow(color: .black.opacity(0.03), radius: 8, y: 4)
+                        }
                     }
                 }
                 .padding(.horizontal, 40)
