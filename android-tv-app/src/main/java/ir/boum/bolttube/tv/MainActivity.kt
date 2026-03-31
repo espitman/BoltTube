@@ -1,7 +1,7 @@
 package ir.boum.bolttube.tv
 
 import android.os.Bundle
-import android.widget.Button
+import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.commit
 
@@ -11,9 +11,15 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        findViewById<Button>(R.id.serverButton).setOnClickListener {
+        // Sidebar Navigation
+        findViewById<TextView>(R.id.sidebarSettings).setOnClickListener {
             (supportFragmentManager.findFragmentById(R.id.rowsContainer) as? TvBrowseFragment)
                 ?.openServerDialog()
+        }
+
+        findViewById<TextView>(R.id.sidebarTrending).setOnClickListener {
+            (supportFragmentManager.findFragmentById(R.id.rowsContainer) as? TvBrowseFragment)
+                ?.viewModel?.refreshLibrary()
         }
 
         if (savedInstanceState == null) {

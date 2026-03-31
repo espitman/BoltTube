@@ -3,40 +3,144 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/tv_background"
-    android:orientation="vertical">
+    android:orientation="horizontal">
 
+    <!-- LEFT SIDEBAR -->
+    <ScrollView
+        android:layout_width="220dp"
+        android:layout_height="match_parent"
+        android:background="#F9F9F9"
+        android:paddingStart="24dp"
+        android:paddingEnd="16dp"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="36dp"
+            android:paddingBottom="36dp">
+
+            <!-- LOGO -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="40dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:background="@drawable/ic_tv_launcher"
+                    android:backgroundTint="@color/tv_accent" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:fontFamily="sans-serif-black"
+                    android:text="BoltTube"
+                    android:textColor="@color/tv_text_header"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- MENU SECTION -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="MENU"
+                android:textColor="@color/tv_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/sidebarHome"
+                style="@style/SidebarItem"
+                android:drawableStart="@drawable/ic_home"
+                android:text="Home" />
+                
+            <TextView
+                android:id="@+id/sidebarTrending"
+                style="@style/SidebarItem"
+                android:drawableStart="@drawable/ic_refresh"
+                android:text="Trending" />
+
+            <!-- LIBRARY SECTION -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="12dp"
+                android:text="LIBRARY"
+                android:textColor="@color/tv_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/sidebarHistory"
+                style="@style/SidebarItem"
+                android:drawableStart="@drawable/ic_refresh"
+                android:text="History" />
+
+            <!-- EXTRA SECTION -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="12dp"
+                android:text="EXTRA"
+                android:textColor="@color/tv_muted"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/sidebarSettings"
+                style="@style/SidebarItem"
+                android:drawableStart="@drawable/ic_settings"
+                android:text="Settings" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- MAIN CONTENT AREA -->
     <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="32dp"
-        android:paddingTop="20dp"
-        android:paddingEnd="32dp"
-        android:paddingBottom="12dp">
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/titleText"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/app_name"
-            android:textColor="@color/tv_text"
-            android:textSize="28sp" />
+        <!-- TOP BAR (Search & Profile Icon like screenshot) -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="80dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="16dp">
 
-        <Button
-            android:id="@+id/serverButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:focusable="true"
-            android:focusableInTouchMode="true"
-            android:text="@string/action_server" />
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:src="@drawable/ic_refresh"
+                android:tint="@color/tv_muted" />
+
+            <ImageView
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/ic_tv_launcher"
+                android:backgroundTint="@color/tv_focus" />
+        </RelativeLayout>
+
+        <FrameLayout
+            android:id="@+id/rowsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingStart="10dp"
+            android:background="@color/tv_background" />
     </LinearLayout>
-
-    <FrameLayout
-        android:id="@+id/rowsContainer"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
 
 </LinearLayout>

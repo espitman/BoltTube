@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- REDUCING LEANBACK INTERNAL HORIZONTAL MARGINS TO CLOSE THE GAP -->
+    <dimen name="lb_browse_rows_margin_start">16dp</dimen>
+    <dimen name="lb_browse_rows_margin_top">12dp</dimen>
+    <dimen name="lb_browse_header_padding_start">0dp</dimen>
+    <dimen name="lb_browse_header_width">110dp</dimen>
+</resources>

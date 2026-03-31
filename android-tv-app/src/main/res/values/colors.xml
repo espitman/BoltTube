@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="tv_background">#0B1020</color>
-    <color name="tv_surface">#121A2E</color>
-    <color name="tv_surface_alt">#16223A</color>
-    <color name="tv_text">#F3F7FF</color>
-    <color name="tv_muted">#9FB0D3</color>
-    <color name="tv_accent">#FF315A</color>
-    <color name="tv_focus">#4EA1FF</color>
+    <color name="tv_background">#FFFFFF</color>
+    <color name="tv_sidebar_bg">#F9F9F9</color>
+    <color name="tv_surface">#F2F2F2</color>
+    <color name="tv_surface_alt">#EBEBEB</color>
+    <color name="tv_text">#282828</color>
+    <color name="tv_text_header">#121212</color>
+    <color name="tv_muted">#606060</color>
+    <color name="tv_accent">#FF0000</color>
+    <color name="tv_focus">#0455B1</color>
+    <color name="tv_black">#000000</color>
+    <color name="tv_white">#FFFFFF</color>
+    <color name="tv_sidebar_selected_bg">#F2F2F2</color>
 </resources>

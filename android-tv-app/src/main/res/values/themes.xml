@@ -8,7 +8,25 @@
         <item name="defaultSearchBrightColor">@color/tv_focus</item>
         <item name="defaultSearchColor">@color/tv_surface_alt</item>
     </style>
+
     <style name="Theme.BoltTubeTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
         <item name="android:windowBackground">@color/tv_surface</item>
+    </style>
+
+    <style name="SidebarItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:background">@drawable/sidebar_item_selector</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:textColor">@color/tv_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:drawablePadding">16dp</item>
+        <item name="android:drawableTint">@color/tv_muted</item>
     </style>
 </resources>
