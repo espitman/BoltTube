@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -21,6 +22,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -148,9 +153,10 @@ private class TvLibraryAdapter(
                     .scaleX(if (hasFocus) 1.05f else 1f)
                     .scaleY(if (hasFocus) 1.05f else 1f)
                     .translationZ(if (hasFocus) 16f else 0f)
-                    .setDuration(160)
+                    .setDuration(100)
                     .start()
                 titleView.alpha = if (hasFocus) 1f else 0.85f
+                titleView.isSelected = hasFocus
             }
         }
 
@@ -158,11 +164,13 @@ private class TvLibraryAdapter(
             boundItem = item
             titleView.text = item.title
             subtitleView.text = durationCache[item.id] ?: ""
+            titleView.isSelected = itemView.isFocused
 
+            Log.d("TvLibraryAdapter", "Loading thumb for ${item.title}: ${item.thumbnailUrl}")
             Glide.with(itemView)
                 .load(item.thumbnailUrl)
                 .centerCrop()
-                .placeholder(android.R.color.transparent) // Show our XML placeholder underneath
+                .placeholder(android.R.color.transparent)
                 .error(android.R.color.transparent)
                 .into(imageView)
 
