@@ -13,6 +13,10 @@
 
     <style name="Theme.BoltTubeTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
         <item name="android:windowBackground">@color/tv_surface</item>
+        <item name="android:textColorPrimary">@color/tv_text_header</item>
+        <item name="android:textColorSecondary">@color/tv_muted</item>
+        <item name="colorAccent">@color/tv_focus</item>
+        <item name="android:colorAccent">@color/tv_focus</item>
     </style>
 
     <style name="SidebarItem">
