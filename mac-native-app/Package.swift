@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "BoltTubeMacNative",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v15),
     ],
     products: [
         .executable(
@@ -17,6 +17,10 @@ let package = Package(
             name: "BoltTubeMacNative",
             resources: [
                 .process("Resources")
+            ],
+            linkerSettings: [
+                .linkedFramework("AVKit"),
+                .linkedFramework("AVFoundation")
             ]
         )
     ]

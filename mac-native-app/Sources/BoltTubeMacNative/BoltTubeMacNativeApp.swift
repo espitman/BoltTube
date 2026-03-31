@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import AVKit
 
 private let fixedWindowSize = NSSize(width: 1020, height: 546)
 

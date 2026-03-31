@@ -1,8 +1,11 @@
 import SwiftUI
+import AVKit
 
 struct ContentView: View {
     @Bindable var controller: ServerController
     @State private var itemToDelete: MediaLibraryItem? = nil
+    @State private var playingItem: MediaLibraryItem? = nil
+    @State private var player: AVPlayer? = nil
 
     private let navItems: [SidebarItem] = [
         .init(title: "Home", symbol: "house"),
@@ -27,6 +30,48 @@ struct ContentView: View {
                 rightRail(metrics: metrics)
             }
         }
+        .overlay {
+            if let item = playingItem {
+                ZStack {
+                    Color.black.opacity(0.3)
+                        .background(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                        .onTapGesture { closePlayer() }
+
+                    VStack(spacing: 0) {
+                        if let p = player {
+                            VideoPlayer(player: p)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(alignment: .topTrailing) {
+                                    Button { closePlayer() } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundStyle(.white.opacity(0.7))
+                                            .padding(16)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                        }
+                    }
+                    .frame(width: 800, height: 480)
+                    .background(Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(color: .black.opacity(0.3), radius: 30)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.35, bounce: 0.1), value: playingItem)
+        .onChange(of: playingItem) { old, newValue in
+            if let item = newValue {
+                let url = controller.localURL(for: item)
+                player = AVPlayer(url: url)
+                player?.play()
+            } else {
+                player?.pause()
+                player = nil
+            }
+        }
         .frame(minWidth: 920, minHeight: 480)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -41,14 +86,26 @@ struct ContentView: View {
         )) {
             Button("Delete", role: .destructive) {
                 if let item = itemToDelete {
-                    Task { await controller.deleteItem(id: item.id) }
+                    deleteItem(item)
                 }
-                itemToDelete = nil
             }
             Button("Cancel", role: .cancel) { itemToDelete = nil }
         } message: {
             Text("This will permanently delete \"\(itemToDelete?.fileName ?? "")\" from disk.")
         }
+    }
+
+    private func deleteItem(_ item: MediaLibraryItem) {
+        Task {
+            await controller.deleteItem(id: item.id)
+            itemToDelete = nil
+        }
+    }
+
+    private func closePlayer() {
+        playingItem = nil
+        player?.pause()
+        player = nil
     }
 
     // MARK: - Sidebar
@@ -352,9 +409,12 @@ struct ContentView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(controller.libraryItems.prefix(10)) { item in
-                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl) {
-                                itemToDelete = item
-                            }
+                            RecentCardCompact(
+                                title: item.fileName,
+                                thumbnailUrl: item.thumbnailUrl,
+                                onPlay: { playingItem = item },
+                                onDelete: { itemToDelete = item }
+                            )
                         }
 
                         if controller.libraryItems.isEmpty {
@@ -413,39 +473,53 @@ extension View {
 struct RecentCardCompact: View {
     let title: String
     let thumbnailUrl: String?
+    let onPlay: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                if let thumb = thumbnailUrl, !thumb.isEmpty {
-                    AsyncImage(url: URL(string: thumb)) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        case .failure:
-                            Color.gray.opacity(0.1)
-                                .overlay { Image(systemName: "play.slash.fill").font(.system(size: 10)).foregroundStyle(.gray) }
-                        default:
-                            Color.gray.opacity(0.05)
+            Button(action: onPlay) {
+                ZStack {
+                    if let thumb = thumbnailUrl, !thumb.isEmpty {
+                        AsyncImage(url: URL(string: thumb)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            case .failure:
+                                Color.gray.opacity(0.1)
+                                    .overlay { Image(systemName: "play.slash.fill").font(.system(size: 10)).foregroundStyle(.gray) }
+                            default:
+                                Color.gray.opacity(0.05)
+                            }
                         }
+                    } else {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.gray.opacity(0.1))
+                            .overlay {
+                                Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11))
+                            }
                     }
-                } else {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.1))
-                        .overlay {
-                            Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11))
-                        }
+                    
+                    // Small play badge
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .shadow(radius: 2)
                 }
+                .frame(width: 68, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .frame(width: 68, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .buttonStyle(.plain)
 
-            Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25))
-                .lineLimit(2)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onPlay) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading)
+            }
+            .buttonStyle(.plain)
 
             Button(action: onDelete) {
                 Image(systemName: "trash")

@@ -260,6 +260,10 @@ final class ServerController {
         await refreshLibrary()
     }
 
+    func localURL(for item: MediaLibraryItem) -> URL {
+        downloadDirectory.appendingPathComponent(item.fileName)
+    }
+
     func refreshLibrary() async {
         do {
             let data = try await runJSONCommand(
