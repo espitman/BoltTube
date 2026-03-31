@@ -77,8 +77,8 @@ class TvBrowseFragment : Fragment() {
                 viewModel.uiState.collect { state ->
                     val items = state.library.map { item ->
                         val rawName = item.fileName.removeSuffix(".mp4")
-                        // Smart Clean: Remove leading numbers (1_ ...) and replace underscores
-                        val cleanTitle = rawName.replaceFirst(Regex("^\\d+_"), "")
+                        // Improved Clean: Remove leading numbers (1_, 01. , 01 - ) and replace underscores
+                        val cleanTitle = rawName.replaceFirst(Regex("^\\d+[\\s._\\-]*"), "")
                             .replace("_", " ")
                             .trim()
 
