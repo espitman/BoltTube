@@ -162,13 +162,8 @@ private class TvLibraryAdapter(
             // Apply Vazir font if Persian text is detected
             if (isPersian(item.title)) {
                 try {
-                    val fontId = itemView.context.resources.getIdentifier("vazir", "font", itemView.context.packageName)
-                    if (fontId != 0) {
-                        val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, fontId)
-                        titleView.typeface = vazir
-                    } else {
-                        titleView.setTypeface(null, android.graphics.Typeface.BOLD)
-                    }
+                    val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, R.font.vazir)
+                    titleView.typeface = vazir
                 } catch (e: Exception) {
                     titleView.setTypeface(null, android.graphics.Typeface.BOLD)
                 }
