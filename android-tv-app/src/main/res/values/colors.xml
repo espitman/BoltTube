@@ -12,4 +12,10 @@
     <color name="tv_black">#000000</color>
     <color name="tv_white">#FFFFFF</color>
     <color name="tv_sidebar_selected_bg">#F2F2F2</color>
+
+    <!-- MEDIA3 PLAYER OVERRIDES (YouTube Theme) -->
+    <color name="lib_media3_player_seek_bar_played_color">#FF0000</color>
+    <color name="lib_media3_player_seek_bar_unplayed_color">#33FFFFFF</color>
+    <color name="lib_media3_player_seek_bar_scrubber_color">#FF0000</color>
+    <color name="lib_media3_player_seek_bar_buffered_color">#44FFFFFF</color>
 </resources>
