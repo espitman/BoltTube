@@ -7,14 +7,6 @@ struct ContentView: View {
     @State private var playingItem: MediaLibraryItem? = nil
     @State private var player: AVPlayer? = nil
 
-    private let navItems: [SidebarItem] = [
-        .init(title: "Home", symbol: "house"),
-        .init(title: "Downloads", symbol: "arrow.down.to.line"),
-        .init(title: "Videos", symbol: "play.rectangle"),
-        .init(title: "Audio", symbol: "music.note"),
-        .init(title: "Settings", symbol: "gearshape"),
-    ]
-
     private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
     private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
     private let accentRed = Color(red: 0.88, green: 0.3, blue: 0.3)
@@ -25,7 +17,6 @@ struct ContentView: View {
             let metrics = LayoutMetrics(containerWidth: proxy.size.width)
 
             HStack(spacing: 0) {
-                sidebar(metrics: metrics)
                 mainPanel(metrics: metrics)
                 rightRail(metrics: metrics)
             }
@@ -72,7 +63,7 @@ struct ContentView: View {
                 player = nil
             }
         }
-        .frame(minWidth: 920, minHeight: 480)
+        .frame(minWidth: 980, minHeight: 480)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea()
@@ -106,54 +97,6 @@ struct ContentView: View {
         playingItem = nil
         player?.pause()
         player = nil
-    }
-
-    // MARK: - Sidebar
-    private func sidebar(metrics: LayoutMetrics) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer()
-                .frame(height: 48)
-
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(navItems.enumerated()), id: \.offset) { index, item in
-                    let isSelected = index == 0
-                    HStack(spacing: 12) {
-                        Image(systemName: item.symbol).font(.system(size: 16)).frame(width: 20)
-                        Text(item.title).font(.system(size: 14, weight: isSelected ? .bold : .semibold))
-                    }
-                    .foregroundStyle(isSelected ? accentBlue : slate600)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        ZStack(alignment: .leading) {
-                            if isSelected {
-                                accentBlue.opacity(0.06).clipShape(RoundedRectangle(cornerRadius: 10))
-                                Rectangle().fill(accentBlue).frame(width: 3, height: 20)
-                                    .clipShape(Capsule()).padding(.leading, 1)
-                            }
-                        }
-                    )
-                    .padding(.horizontal, 12)
-                }
-            }
-
-            Spacer()
-
-            HStack {
-                Image(systemName: "star.fill").foregroundStyle(.orange)
-                Text("BoltTube Premium").font(.system(size: 13, weight: .bold)).foregroundStyle(slate900)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color.gray.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
-        }
-        .frame(width: 240)
-        .background(Color.white)
-        .overlay(alignment: .trailing) { Divider() }
     }
 
     // MARK: - Main Panel
@@ -520,9 +463,4 @@ struct RecentCardCompact: View {
 
 private struct LayoutMetrics {
     let containerWidth: CGFloat
-}
-
-private struct SidebarItem {
-    let title: String
-    let symbol: String
 }
