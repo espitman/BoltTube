@@ -9,19 +9,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first {
             window.delegate = self
+            window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.styleMask.insert(.fullSizeContentView)
             window.isOpaque = false
             window.backgroundColor = .clear
             window.toolbar = nil
             window.titlebarSeparatorStyle = .none
             window.isMovableByWindowBackground = true
-            window.styleMask.remove(.resizable)
             window.collectionBehavior.remove(.fullScreenPrimary)
             window.collectionBehavior.remove(.fullScreenAllowsTiling)
             window.minSize = fixedWindowSize
             window.maxSize = fixedWindowSize
+            window.showsResizeIndicator = false
             window.standardWindowButton(.zoomButton)?.isEnabled = false
             window.standardWindowButton(.zoomButton)?.isHidden = true
             let currentOrigin = window.frame.origin
