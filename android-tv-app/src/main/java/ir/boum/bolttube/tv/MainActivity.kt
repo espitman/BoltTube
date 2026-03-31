@@ -28,11 +28,6 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
                 ?.viewModel?.refreshLibrary()
         }
 
-        findViewById<ImageView>(R.id.topSettings).setOnClickListener {
-            (supportFragmentManager.findFragmentById(R.id.rowsContainer) as? TvBrowseFragment)
-                ?.openServerDialog()
-        }
-
         if (savedInstanceState == null) {
             supportFragmentManager.commit {
                 setReorderingAllowed(true)

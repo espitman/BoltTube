@@ -134,18 +134,17 @@
                 android:src="@drawable/ic_refresh"
                 android:tint="@color/tv_muted" />
 
-            <ImageView
-                android:id="@+id/topSettings"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
+            <TextClock
+                android:id="@+id/topClock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
-                android:background="@drawable/ic_tv_launcher"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:nextFocusLeft="@id/topRefresh"
-                android:backgroundTint="@color/tv_focus" />
+                android:fontFamily="sans-serif-medium"
+                android:format12Hour="hh:mm a"
+                android:format24Hour="HH:mm"
+                android:textColor="@color/tv_text"
+                android:textSize="18sp" />
         </RelativeLayout>
 
         <FrameLayout
