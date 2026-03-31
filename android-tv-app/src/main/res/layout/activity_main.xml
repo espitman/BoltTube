@@ -60,6 +60,7 @@
                 android:id="@+id/sidebarHome"
                 style="@style/SidebarItem"
                 android:drawableStart="@drawable/ic_home"
+                android:nextFocusUp="@id/topRefresh"
                 android:text="Home" />
                 
             <TextView
@@ -119,19 +120,31 @@
             android:paddingEnd="16dp">
 
             <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
+                android:id="@+id/topRefresh"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:layout_alignParentStart="true"
                 android:layout_centerVertical="true"
+                android:background="@drawable/sidebar_item_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/sidebarHome"
+                android:padding="6dp"
                 android:src="@drawable/ic_refresh"
                 android:tint="@color/tv_muted" />
 
             <ImageView
+                android:id="@+id/topSettings"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
                 android:background="@drawable/ic_tv_launcher"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:nextFocusLeft="@id/topRefresh"
                 android:backgroundTint="@color/tv_focus" />
         </RelativeLayout>
 
