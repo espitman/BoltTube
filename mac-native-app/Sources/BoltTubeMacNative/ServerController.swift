@@ -120,6 +120,12 @@ final class ServerController {
             .appending(path: "Movies/BoltTubeNative", directoryHint: .isDirectory)
         self.downloadDirectory = defaultDirectory
         ensureDirectoryExists(defaultDirectory)
+        
+        // Auto-start server and refresh library on launch
+        Task {
+            await refreshLibrary()
+            await startShareServer()
+        }
     }
 
     var statusLine: String {
