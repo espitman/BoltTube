@@ -1,0 +1,46 @@
+name: BoltTube
+options:
+  minimumXcodeGenVersion: 2.45.0
+  deploymentTarget:
+    macOS: "15.0"
+configs:
+  Debug: debug
+  Release: release
+settings:
+  base:
+    PRODUCT_NAME: BoltTube
+    PRODUCT_BUNDLE_IDENTIFIER: ir.boum.BoltTubeMac
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 1.0.0
+    SWIFT_VERSION: 5.10
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: BoltTube
+    INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.video
+    INFOPLIST_KEY_NSHumanReadableCopyright: BoltTube
+    INFOPLIST_KEY_NSHighResolutionCapable: YES
+targets:
+  BoltTube:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/BoltTubeMacNative
+        excludes:
+          - Resources
+      - path: Sources/BoltTubeMacNative/Resources
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: BoltTube
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+    dependencies: []
+schemes:
+  BoltTube:
+    build:
+      targets:
+        BoltTube: all
+    run:
+      config: Debug
+    archive:
+      config: Release

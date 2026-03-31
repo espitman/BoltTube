@@ -2,6 +2,22 @@ import AppKit
 import Foundation
 import Observation
 
+#if SWIFT_PACKAGE
+private let appResourceBundle = Bundle.module
+#else
+private let appResourceBundle = Bundle.main
+#endif
+
+private func bundledResourceURL(named name: String, withExtension ext: String) -> URL? {
+    if let direct = appResourceBundle.url(forResource: name, withExtension: ext) {
+        return direct
+    }
+    if let nested = appResourceBundle.url(forResource: name, withExtension: ext, subdirectory: "Resources") {
+        return nested
+    }
+    return nil
+}
+
 struct MediaLibraryItem: Codable, Identifiable, Hashable {
     let id: String
     let fileName: String
@@ -451,14 +467,14 @@ final class ServerController {
     }
 
     private var requirementsURL: URL {
-        guard let url = Bundle.module.url(forResource: "requirements", withExtension: "txt") else {
+        guard let url = bundledResourceURL(named: "requirements", withExtension: "txt") else {
             fatalError("Missing requirements.txt resource")
         }
         return url
     }
 
     private var bridgeScriptURL: URL {
-        guard let url = Bundle.module.url(forResource: "bridge_server", withExtension: "py") else {
+        guard let url = bundledResourceURL(named: "bridge_server", withExtension: "py") else {
             fatalError("Missing bridge_server.py resource")
         }
         return url
