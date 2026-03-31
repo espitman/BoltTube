@@ -46,8 +46,8 @@ class TvBrowseFragment : Fragment() {
         adapter = TvLibraryAdapter { item ->
             startActivity(
                 Intent(requireContext(), VideoPlayerActivity::class.java)
-                    .putExtra("VIDEO_URL", item.streamUrl)
-                    .putExtra("VIDEO_TITLE", item.title),
+                    .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
+                    .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title),
             )
         }
 
