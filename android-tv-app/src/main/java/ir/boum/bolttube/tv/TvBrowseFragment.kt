@@ -1,8 +1,6 @@
 package ir.boum.bolttube.tv
 
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
-import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,10 +20,6 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -52,8 +46,8 @@ class TvBrowseFragment : Fragment() {
         adapter = TvLibraryAdapter { item ->
             startActivity(
                 Intent(requireContext(), VideoPlayerActivity::class.java)
-                    .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
-                    .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title),
+                    .putExtra("VIDEO_URL", item.streamUrl)
+                    .putExtra("VIDEO_TITLE", item.title),
             )
         }
 
@@ -61,9 +55,6 @@ class TvBrowseFragment : Fragment() {
             layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = this@TvBrowseFragment.adapter
             itemAnimator = null
-            if (itemDecorationCount == 0) {
-                addItemDecoration(ExactGridSpacingDecoration(spanCount = 3, spacingPx = dp(10)))
-            }
         }
 
         emptyView = view.findViewById(R.id.emptyView)
@@ -85,9 +76,15 @@ class TvBrowseFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
                     val items = state.library.map { item ->
+                        val rawName = item.fileName.removeSuffix(".mp4")
+                        // Smart Clean: Remove leading numbers (1_ ...) and replace underscores
+                        val cleanTitle = rawName.replaceFirst(Regex("^\\d+_"), "")
+                            .replace("_", " ")
+                            .trim()
+
                         VideoItem(
                             id = item.id,
-                            title = item.fileName.removeSuffix(".mp4"),
+                            title = cleanTitle,
                             subtitle = "",
                             thumbnailUrl = item.thumbnailUrl,
                             streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
@@ -98,10 +95,6 @@ class TvBrowseFragment : Fragment() {
                 }
             }
         }
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * requireContext().resources.displayMetrics.density).toInt()
     }
 }
 
@@ -153,18 +146,35 @@ private class TvLibraryAdapter(
                     .scaleX(if (hasFocus) 1.05f else 1f)
                     .scaleY(if (hasFocus) 1.05f else 1f)
                     .translationZ(if (hasFocus) 16f else 0f)
-                    .setDuration(100)
+                    .setDuration(160)
                     .start()
                 titleView.alpha = if (hasFocus) 1f else 0.85f
-                titleView.isSelected = hasFocus
+                titleView.isSelected = hasFocus // Trigger Translucent Marquee
             }
         }
 
         fun bind(item: VideoItem) {
             boundItem = item
             titleView.text = item.title
-            subtitleView.text = durationCache[item.id] ?: ""
             titleView.isSelected = itemView.isFocused
+            subtitleView.text = durationCache[item.id] ?: ""
+
+            // Apply Vazir font if Persian text is detected
+            if (isPersian(item.title)) {
+                try {
+                    val fontId = itemView.context.resources.getIdentifier("vazir", "font", itemView.context.packageName)
+                    if (fontId != 0) {
+                        val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, fontId)
+                        titleView.typeface = vazir
+                    } else {
+                        titleView.setTypeface(null, android.graphics.Typeface.BOLD)
+                    }
+                } catch (e: Exception) {
+                    titleView.setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+            } else {
+                titleView.setTypeface(null, android.graphics.Typeface.BOLD)
+            }
 
             Log.d("TvLibraryAdapter", "Loading thumb for ${item.title}: ${item.thumbnailUrl}")
             Glide.with(itemView)
@@ -177,6 +187,13 @@ private class TvLibraryAdapter(
             loadDuration(item)
         }
 
+        private fun isPersian(text: String): Boolean {
+            for (char in text) {
+                if (char in '\u0600'..'\u06FF') return true
+            }
+            return false
+        }
+
         private fun loadDuration(item: VideoItem) {
             durationCache[item.id]?.let { cached ->
                 subtitleView.text = cached
@@ -186,14 +203,14 @@ private class TvLibraryAdapter(
             val expectedId = item.id
             executor.execute {
                 val duration = runCatching {
-                    MediaMetadataRetriever().use { retriever ->
+                    android.media.MediaMetadataRetriever().use { retriever ->
                         retriever.setDataSource(item.streamUrl, emptyMap())
-                        val millis = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        val millis = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
                             ?.toLongOrNull()
                             ?: 0L
                         formatDuration(millis)
                     }
-                }.getOrElse { "--:--" }
+                }.getOrElse { "" }
 
                 durationCache[expectedId] = duration
                 mainHandler.post {
@@ -204,46 +221,13 @@ private class TvLibraryAdapter(
             }
         }
 
-        private fun placeholder(view: View) = GradientDrawable().apply {
-            cornerRadius = dp(view, 18).toFloat()
-            setColor(ContextCompat.getColor(view.context, R.color.tv_surface_alt))
+        private fun formatDuration(durationMs: Long): String {
+            val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds)
+            else String.format("%02d:%02d", minutes, seconds)
         }
-    }
-}
-
-private class ExactGridSpacingDecoration(
-    private val spanCount: Int,
-    private val spacingPx: Int,
-) : RecyclerView.ItemDecoration() {
-    override fun getItemOffsets(
-        outRect: android.graphics.Rect,
-        view: View,
-        parent: RecyclerView,
-        state: RecyclerView.State,
-    ) {
-        val position = parent.getChildAdapterPosition(view)
-        if (position == RecyclerView.NO_POSITION) return
-
-        val column = position % spanCount
-        outRect.left = 0
-        outRect.right = if (column == spanCount - 1) 0 else spacingPx
-        outRect.top = if (position < spanCount) 0 else spacingPx
-        outRect.bottom = 0
-    }
-}
-
-private fun dp(view: View, value: Int): Int {
-    return (value * view.resources.displayMetrics.density).toInt()
-}
-
-private fun formatDuration(durationMs: Long): String {
-    val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        String.format("%d:%02d:%02d", hours, minutes, seconds)
-    } else {
-        String.format("%02d:%02d", minutes, seconds)
     }
 }
