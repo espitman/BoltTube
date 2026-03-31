@@ -9,13 +9,36 @@
     android:focusableInTouchMode="true"
     android:orientation="vertical">
 
-    <ImageView
-        android:id="@+id/cardImage"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:adjustViewBounds="true"
-        android:background="@color/tv_surface"
-        android:scaleType="fitCenter" />
+        android:layout_height="wrap_content">
+
+        <ImageView
+            android:id="@+id/cardImage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            android:background="@color/tv_surface"
+            android:scaleType="fitCenter" />
+
+        <TextView
+            android:id="@+id/cardSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_marginEnd="10dp"
+            android:layout_marginBottom="10dp"
+            android:background="@drawable/tv_duration_badge"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingStart="10dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="4dp"
+            android:textColor="@color/tv_muted"
+            android:textSize="13sp" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -31,8 +54,10 @@
             android:id="@+id/cardTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
+            android:ellipsize="marquee"
             android:fadingEdge="horizontal"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
             android:marqueeRepeatLimit="marquee_forever"
             android:maxLines="1"
             android:scrollHorizontally="true"
@@ -40,16 +65,6 @@
             android:textColor="@color/tv_text"
             android:textSize="16sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/cardSubtitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="@color/tv_muted"
-            android:textSize="13sp" />
     </LinearLayout>
 
 </LinearLayout>

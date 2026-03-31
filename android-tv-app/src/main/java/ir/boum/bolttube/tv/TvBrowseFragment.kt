@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -150,6 +151,7 @@ private class TvLibraryAdapter(
                     .start()
                 view.alpha = if (hasFocus) 1f else 0.98f
                 titleView.isSelected = hasFocus
+                titleView.ellipsize = if (hasFocus) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
             }
         }
 
@@ -157,6 +159,7 @@ private class TvLibraryAdapter(
             boundItem = item
             titleView.text = item.title
             titleView.isSelected = itemView.isFocused
+            titleView.ellipsize = if (itemView.isFocused) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
             subtitleView.text = durationCache[item.id] ?: "..."
 
             Glide.with(itemView)
