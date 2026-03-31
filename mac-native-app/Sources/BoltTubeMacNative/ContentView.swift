@@ -111,24 +111,8 @@ struct ContentView: View {
     // MARK: - Sidebar
     private func sidebar(metrics: LayoutMetrics) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Circle()
-                    .fill(Color.gray.opacity(0.1))
-                    .frame(width: 44, height: 44)
-                    .overlay { Image(systemName: "person.fill").foregroundStyle(slate600) }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Ali Rezai")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(slate900)
-                    Text("ali.rezai@gmail.com")
-                        .font(.system(size: 11))
-                        .foregroundStyle(slate600)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 40)
-            .padding(.bottom, 48)
+            Spacer()
+                .frame(height: 48)
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(navItems.enumerated()), id: \.offset) { index, item in
