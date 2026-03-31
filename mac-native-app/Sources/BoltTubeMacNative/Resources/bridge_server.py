@@ -379,6 +379,14 @@ class RequestHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == "/":
+            self.send_response(HTTPStatus.OK)
+            self._send_cors_headers()
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"BoltTube Bridge Server is running! Use /health or /api/items for details.")
+            return
+
         if path == "/health":
             self._send_json(
                 {

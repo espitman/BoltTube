@@ -358,6 +358,19 @@ struct ContentView: View {
             }
 
             Spacer()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("REMOTE ACCESS")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(slate600.opacity(0.4))
+                    .kerning(0.5)
+                
+                Text(controller.lanURLDisplay)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(accentBlue)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 24)
         }
         .frame(width: 250)
         .padding(.horizontal, 24).padding(.top, 40)

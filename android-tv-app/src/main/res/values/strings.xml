@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BoltTube TV</string>
+    <string name="default_server_url">http://10.0.2.2:9864</string>
+    <string name="server_dialog_title">Mac Server Address</string>
+    <string name="server_dialog_hint">http://192.168.1.10:9864</string>
+    <string name="action_refresh">Refresh Library</string>
+    <string name="action_server">Change Server</string>
+    <string name="action_retry">Retry</string>
+    <string name="row_actions">Actions</string>
+    <string name="row_library">Library</string>
+    <string name="empty_library">No videos found on the Mac app.</string>
+    <string name="server_saved">Server updated.</string>
+</resources>

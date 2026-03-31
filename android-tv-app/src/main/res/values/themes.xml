@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.BoltTubeTV" parent="Theme.Leanback">
+        <item name="android:windowBackground">@color/tv_background</item>
+        <item name="android:colorBackground">@color/tv_background</item>
+        <item name="defaultBrandColor">@color/tv_accent</item>
+        <item name="defaultBrandColorDark">@color/tv_accent</item>
+        <item name="defaultSearchBrightColor">@color/tv_focus</item>
+        <item name="defaultSearchColor">@color/tv_surface_alt</item>
+    </style>
+    <style name="Theme.BoltTubeTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@color/tv_surface</item>
+    </style>
+</resources>
