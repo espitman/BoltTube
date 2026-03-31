@@ -34,9 +34,6 @@ def readable_size(num: int) -> str:
         num /= 1024.0
     return f"{num:.1f} TB"
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
 def sanitize_filename(name: str) -> str:
     name = re.sub(r'[^\w\s\u0600-\u06FF-]', '', name)
     return re.sub(r'\s+', ' ', name).strip()
@@ -92,20 +89,8 @@ class MediaLibrary:
     def list_items(self) -> List[Dict[str, Any]]:
         with self._lock:
             items = sorted(self._items.values(), key=lambda i: i.created_at, reverse=True)
-            return [
-                {
-                    "id": i.id,
-                    "fileName": i.file_name,
-                    "streamUrl": i.stream_url,
-                    "size": i.size,
-                    "createdAt": i.created_at,
-                    "thumbnailUrl": i.thumbnail_url
-                }
-                for i in items
-            ]
-
-    def get(self, media_id: str) -> Optional[MediaItem]:
-        return self._items.get(media_id)
+            return [{"id": i.id, "fileName": i.file_name, "streamUrl": i.stream_url, "size": i.size, 
+                    "createdAt": i.created_at, "thumbnailUrl": i.thumbnail_url} for i in items]
 
     def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "") -> MediaItem:
         with self._lock:
@@ -113,7 +98,7 @@ class MediaLibrary:
             final_p = file_path.with_name(f"{media_id}{file_path.suffix}")
             file_path.rename(final_p)
             item = MediaItem(id=media_id, file_name=final_p.name, file_path=str(final_p), stream_url=f"/media/{media_id}",
-                            size=readable_size(final_p.stat().st_size), created_at=now_iso(), 
+                            size=readable_size(final_p.stat().st_size), created_at=datetime.now(timezone.utc).isoformat(), 
                             source_url=source_url, thumbnail_url=thumbnail_url)
             self._items[item.id] = item
             self._save()
@@ -137,8 +122,13 @@ class BridgeService:
     def resolve(self, url: str) -> Dict[str, Any]:
         yt = YouTube(url)
         thumb = self._stable_t(url, yt)
-        formats = [{"id": s.itag, "title": s.resolution, "details": f"{s.video_codec}", "filesize": readable_size(s.filesize)}
-                   for s in yt.streams.filter(progressive=False, file_extension="mp4").order_by("resolution").desc()]
+        streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
+        formats = []
+        seen_res = set()
+        for s in streams:
+            if not s.resolution or s.resolution in seen_res: continue
+            seen_res.add(s.resolution)
+            formats.append({"id": str(s.itag), "title": s.resolution, "details": "AVC1", "filesize": readable_size(s.filesize or s.filesize_approx or 0)})
         return {"title": yt.title, "thumbnailUrl": thumb, "durationSeconds": int(getattr(yt, "length", 0)), "formats": formats}
 
     def download_with_progress(self, url: str, format_id: str) -> Dict[str, Any]:
@@ -146,18 +136,55 @@ class BridgeService:
             total = stream.filesize
             down = total - remaining
             print(json.dumps({"event": "progress", "downloadedBytes": down, "totalBytes": total, "fraction": down/total if total>0 else 0}), file=sys.stderr, flush=True)
+        
         yt = YouTube(url, on_progress_callback=on_p)
         thumb = self._stable_t(url, yt)
         stream = yt.streams.get_by_itag(int(format_id))
-        if not stream: raise ValueError("error")
+        if not stream: raise ValueError("Format not found")
+        
         t_name = f"{sanitize_filename(yt.title or 'video')}-{uuid.uuid4().hex[:8]}"
         print(json.dumps({"event": "starting", "title": yt.title, "tempName": t_name}), file=sys.stderr, flush=True)
-        f_path = Path(stream.download(output_path=str(self.library.download_dir), filename=f"{t_name}.mp4"))
+        
+        target_dir = self.library.download_dir
+        if stream.is_progressive:
+            f_path = Path(stream.download(output_path=str(target_dir), filename=f"{t_name}.mp4"))
+        else:
+            ffmpeg = shutil.which("ffmpeg") or "/usr/local/bin/ffmpeg" or "/opt/homebrew/bin/ffmpeg"
+            audio = yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
+            if os.path.exists(ffmpeg):
+                if audio is None:
+                    raise ValueError("No compatible audio stream found")
+                v_p = Path(stream.download(output_path=str(target_dir), filename=f"{t_name}.video.{stream.subtype or 'mp4'}"))
+                a_p = Path(audio.download(output_path=str(target_dir), filename=f"{t_name}.audio.{audio.subtype or 'm4a'}"))
+                f_path = target_dir / f"{t_name}.mp4"
+                print(json.dumps({"event": "merging"}), file=sys.stderr, flush=True)
+                completed = subprocess.run(
+                    [
+                        ffmpeg,
+                        "-nostdin",
+                        "-y",
+                        "-i", str(v_p),
+                        "-i", str(a_p),
+                        "-c:v", "copy",
+                        "-c:a", "aac",
+                        "-movflags", "+faststart",
+                        str(f_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    stdin=subprocess.DEVNULL,
+                )
+                v_p.unlink(missing_ok=True)
+                a_p.unlink(missing_ok=True)
+                if completed.returncode != 0:
+                    raise ValueError(completed.stderr.strip() or "ffmpeg merge failed")
+            else:
+                # Fallback to the best progressive stream if ffmpeg is missing
+                fallback = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
+                f_path = Path(fallback.download(output_path=str(target_dir), filename=f"{t_name}.mp4"))
+            
         item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb)
         return {"id": item.id, "streamUrl": item.stream_url, "fileName": item.file_name}
-
-    def list_items(self):
-        return {"items": self.library.list_items()}
 
 class RequestHandler(BaseHTTPRequestHandler):
     service: BridgeService
@@ -168,10 +195,10 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/health": self._send_json({"status": "ok"})
-        elif p == "/api/items": self._send_json(self.service.list_items())
+        elif p == "/api/items": self._send_json(self.service.library.list_items() if hasattr(self.service.library, "list_items") else {"items": []})
         elif p.startswith("/media/"):
             media_id = unquote(p.removeprefix("/media/"))
-            item = self.service.library.get(media_id)
+            item = self.service.library._items.get(media_id)
             if item and Path(item.file_path).exists():
                 self.send_response(200); self.send_header("Content-Type", "video/mp4"); self.end_headers()
                 with open(item.file_path, "rb") as f: shutil.copyfileobj(f, self.wfile)
@@ -179,7 +206,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         p = urlparse(self.path).path
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        if p == "/api/download": self._send_json(self.service.download_with_progress(data["url"], data["formatId"]))
+        if p == "/api/resolve": self._send_json(self.service.resolve(data["url"]))
+        elif p == "/api/download": self._send_json(self.service.download_with_progress(data["url"], data["formatId"]))
         elif p == "/api/delete": self._send_json({"status": "deleted"} if self.service.library.remove(data["id"]) else {"status": "not_found"})
 
 def main():
@@ -193,7 +221,7 @@ def main():
         with ThreadingHTTPServer(("0.0.0.0", args.port), RequestHandler) as s: s.serve_forever()
     elif args.command == "resolve": print(json.dumps(service.resolve(args.url)))
     elif args.command == "download-progress": print(json.dumps(service.download_with_progress(args.url, args.format_id)))
-    elif args.command == "list": print(json.dumps(service.list_items()))
+    elif args.command == "list": print(json.dumps({"items": service.library.list_items()}))
     elif args.command == "delete": print(json.dumps({"status": "deleted" if service.library.remove(args.media_id) else "not_found"}))
 
 if __name__ == "__main__":
