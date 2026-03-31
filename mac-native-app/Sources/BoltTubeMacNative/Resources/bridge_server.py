@@ -95,6 +95,22 @@ class MediaLibrary:
             )
         self._save()
 
+    def remove(self, media_id: str) -> bool:
+        with self._lock:
+            if media_id in self._items:
+                item = self._items[media_id]
+                try:
+                    p = Path(item.file_path)
+                    if p.exists():
+                        p.unlink()
+                except Exception as error:
+                    print(f"Failed to delete file {item.file_path}: {error}", file=sys.stderr)
+                
+                del self._items[media_id]
+                self._save()
+                return True
+        return False
+
     def list_items(self) -> list[dict[str, str]]:
         with self._lock:
             self._sync_disk()
@@ -375,6 +391,25 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:  # noqa: N802
         self._handle_request(include_body=False)
 
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/api/download":
+            data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self._send_json(self.service.download(data["url"], data["formatId"]))
+            return
+
+        if path == "/api/delete":
+            data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.service.library.remove(data["id"]):
+                self._send_json({"status": "deleted"})
+            else:
+                self._send_json({"status": "not_found"}, status=HTTPStatus.NOT_FOUND)
+            return
+
+        self._send_json({"error": "Not found"}, status=HTTPStatus.NOT_FOUND)
+
     def _handle_request(self, *, include_body: bool) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
@@ -478,6 +513,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
     add_download_dir_argument(serve_parser)
     serve_parser.add_argument("--port", type=int, default=9864)
 
+    delete_parser = subparsers.add_parser("delete")
+    add_download_dir_argument(delete_parser)
+    delete_parser.add_argument("--media-id", required=True)
+
     return parser
 
 
@@ -498,6 +537,13 @@ def run_command(args: argparse.Namespace) -> int:
 
     if args.command == "list":
         print(json.dumps(service.list_items()), flush=True)
+        return 0
+
+    if args.command == "delete":
+        if service.library.remove(args.media_id):
+            print(json.dumps({"status": "deleted"}), flush=True)
+        else:
+            print(json.dumps({"status": "not_found"}), flush=True)
         return 0
 
     if args.command == "serve":

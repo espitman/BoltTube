@@ -273,13 +273,28 @@ final class ServerController {
     }
 
     func deleteItem(id: String) async {
-        guard let item = libraryItems.first(where: { $0.id == id }) else { return }
-        // Try to remove using the fileName from downloadDirectory
-        let path = downloadDirectory.appendingPathComponent(item.fileName)
-        try? FileManager.default.removeItem(at: path)
-        // Also try any matching item by scanning
-        appendLog("Deleted: \(item.fileName)")
-        await refreshLibrary()
+        guard let url = URL(string: "\(serverURLDisplay)/api/delete") else { return }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body: [String: String] = ["id": id]
+        request.httpBody = try? JSONEncoder().encode(body)
+        
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode) else {
+                appendLog("Delete API failed for item ID: \(id)")
+                return
+            }
+            
+            appendLog("Deleted item: \(id)")
+            await refreshLibrary()
+        } catch {
+            appendLog("Network error during delete: \(error.localizedDescription)")
+        }
     }
 
     func localURL(for item: MediaLibraryItem) -> URL {
