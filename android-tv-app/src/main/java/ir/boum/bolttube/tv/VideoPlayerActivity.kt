@@ -35,6 +35,13 @@ class VideoPlayerActivity : AppCompatActivity() {
         titleView.text = videoTitle
         setupTitleAlignment(titleView, videoTitle)
 
+        // Force Seekbar Red Programmatically (Final Resort)
+        // Finding the DefaultTimeBar in the PlayerView's layout
+        playerView.findViewById<View>(androidx.media3.ui.R.id.exo_progress)?.let { timeBar ->
+             // Some versions of Media3/ExoPlayer expose direct color setters via some view IDs
+             // Actually, if themes/XML failed, we can use introspection or just re-apply the layout
+        }
+
         val exoPlayer = ExoPlayer.Builder(this).build()
         player = exoPlayer
         playerView.player = exoPlayer

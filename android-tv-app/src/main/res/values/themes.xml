@@ -9,12 +9,6 @@
         <item name="defaultBrandColorDark">@color/tv_accent</item>
         <item name="defaultSearchBrightColor">@color/tv_focus</item>
         <item name="defaultSearchColor">@color/tv_surface_alt</item>
-        
-        <!-- FORCE PLAYER COLORS IN THEME -->
-        <item name="exo_styled_controls_played_color">@color/tv_accent</item>
-        <item name="exo_styled_controls_unplayed_color">#33FFFFFF</item>
-        <item name="exo_styled_controls_buffered_color">#44FFFFFF</item>
-        <item name="exo_styled_controls_scrubber_color">@color/tv_accent</item>
     </style>
 
     <style name="Theme.BoltTubeTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
