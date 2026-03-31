@@ -145,28 +145,25 @@ private class TvLibraryAdapter(
             }
             itemView.setOnFocusChangeListener { view, hasFocus ->
                 view.animate()
-                    .scaleX(if (hasFocus) 1.03f else 1f)
-                    .scaleY(if (hasFocus) 1.03f else 1f)
-                    .setDuration(140)
+                    .scaleX(if (hasFocus) 1.05f else 1f)
+                    .scaleY(if (hasFocus) 1.05f else 1f)
+                    .translationZ(if (hasFocus) 16f else 0f)
+                    .setDuration(160)
                     .start()
-                view.alpha = if (hasFocus) 1f else 0.98f
-                titleView.isSelected = hasFocus
-                titleView.ellipsize = if (hasFocus) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
+                titleView.alpha = if (hasFocus) 1f else 0.85f
             }
         }
 
         fun bind(item: VideoItem) {
             boundItem = item
             titleView.text = item.title
-            titleView.isSelected = itemView.isFocused
-            titleView.ellipsize = if (itemView.isFocused) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
-            subtitleView.text = durationCache[item.id] ?: "..."
+            subtitleView.text = durationCache[item.id] ?: ""
 
             Glide.with(itemView)
                 .load(item.thumbnailUrl)
-                .fitCenter()
-                .placeholder(placeholder(itemView))
-                .error(placeholder(itemView))
+                .centerCrop()
+                .placeholder(android.R.color.transparent) // Show our XML placeholder underneath
+                .error(android.R.color.transparent)
                 .into(imageView)
 
             loadDuration(item)
