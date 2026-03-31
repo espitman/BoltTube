@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BoltTubeTV" parent="Theme.Leanback">
+    <style name="Theme.BoltTubeTV" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/tv_background</item>
         <item name="android:colorBackground">@color/tv_background</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowContentTransitions">false</item>
         <item name="defaultBrandColor">@color/tv_accent</item>
         <item name="defaultBrandColorDark">@color/tv_accent</item>
         <item name="defaultSearchBrightColor">@color/tv_focus</item>
