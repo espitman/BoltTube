@@ -58,10 +58,10 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .shadow(color: .black.opacity(0.3), radius: 30)
                 }
-                .transition(.scale.combined(with: .opacity))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.35, bounce: 0.1), value: playingItem)
+        .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
         .onChange(of: playingItem) { old, newValue in
             if let item = newValue {
                 let url = controller.localURL(for: item)
