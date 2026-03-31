@@ -372,7 +372,7 @@ struct ContentView: View {
 
             Spacer()
         }
-        .frame(width: 300)
+        .frame(width: 250)
         .padding(.horizontal, 24).padding(.top, 40)
         .background(Color.white)
         .overlay(alignment: .leading) { Divider() }
