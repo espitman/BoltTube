@@ -50,10 +50,10 @@ struct ContentView: View {
         .overlay { if let _ = playingItem { playerOverlay() } }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
-        .sheet(isPresented: $showCreatePlaylist) { dialogModal(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); showCreatePlaylist = false; newPlaylistName = "" } }, onCancel: { showCreatePlaylist = false; newPlaylistName = "" }) }
-        .sheet(item: $playlistToEdit) { p in dialogModal(title: "Rename Playlist", text: $editPlaylistName, onConfirm: { Task { await controller.updatePlaylist(id: p.id, name: editPlaylistName); playlistToEdit = nil } }, onCancel: { playlistToEdit = nil }) }
-        .sheet(isPresented: $showCreateChannel) { dialogModal(title: "New Channel", text: $newChannelName, onConfirm: { Task { await controller.createChannel(name: newChannelName); showCreateChannel = false; newChannelName = "" } }, onCancel: { showCreateChannel = false; newChannelName = "" }) }
-        .sheet(item: $channelToEdit) { c in dialogModal(title: "Rename Channel", text: $editChannelName, onConfirm: { Task { await controller.updateChannel(id: c.id, name: editChannelName); channelToEdit = nil } }, onCancel: { channelToEdit = nil }) }
+        .sheet(isPresented: $showCreatePlaylist) { DialogModalView(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); newPlaylistName = "" } }) }
+        .sheet(item: $playlistToEdit) { p in DialogModalView(title: "Rename Playlist", text: $editPlaylistName, onConfirm: { Task { await controller.updatePlaylist(id: p.id, name: editPlaylistName) } }) }
+        .sheet(isPresented: $showCreateChannel) { DialogModalView(title: "New Channel", text: $newChannelName, onConfirm: { Task { await controller.createChannel(name: newChannelName); newChannelName = "" } }) }
+        .sheet(item: $channelToEdit) { c in DialogModalView(title: "Rename Channel", text: $editChannelName, onConfirm: { Task { await controller.updateChannel(id: c.id, name: editChannelName) } }) }
         .animation(.spring(duration: 0.4, bounce: 0.1), value: currentTab)
         .animation(.spring(duration: 0.4, bounce: 0.1), value: controller.activeManagementTab)
         .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
@@ -284,14 +284,26 @@ struct ContentView: View {
 
     private func placeholderView(title: String) -> some View { VStack { Text(title).font(.system(size: 24, weight: .bold)).foregroundStyle(slate600.opacity(0.4)) }.frame(maxWidth: .infinity, maxHeight: .infinity) }
     private func closePlayer() { playingItem = nil; player?.pause(); player = nil }
+}
 
-    private func dialogModal(title: String, text: Binding<String>, onConfirm: @escaping () -> Void, onCancel: @escaping () -> Void) -> some View {
+struct DialogModalView: View {
+    @Environment(\.dismiss) var dismiss; let title: String; @Binding var text: String; let onConfirm: () -> Void
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+    private let accentBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
+
+    var body: some View {
         VStack(spacing: 24) {
             Text(title).font(.system(size: 18, weight: .bold)).foregroundStyle(slate900)
-            TextField("Name...", text: text).textFieldStyle(.plain).foregroundStyle(slate900).padding(12).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 8)).overlay { RoundedRectangle(cornerRadius: 8).stroke(Color.black.opacity(0.1)) }
+            TextField("Name...", text: $text).textFieldStyle(.plain).foregroundStyle(slate900).padding(12).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 8)).overlay { RoundedRectangle(cornerRadius: 8).stroke(Color.black.opacity(0.1)) }
             HStack(spacing: 12) {
-                Button("Confirm") { onConfirm() }.buttonStyle(.plain).frame(maxWidth: .infinity).padding(.vertical, 10).background(accentBlue).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 8))
-                Button("Cancel") { onCancel() }.buttonStyle(.plain).frame(maxWidth: .infinity).padding(.vertical, 10).background(Color.gray.opacity(0.1)).foregroundStyle(slate900).clipShape(RoundedRectangle(cornerRadius: 8))
+                Button { onConfirm(); dismiss() } label: { 
+                    Text("Confirm").font(.system(size: 13, weight: .bold)).frame(maxWidth: .infinity).padding(.vertical, 10).background(accentBlue).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                
+                Button { dismiss() } label: { 
+                    Text("Cancel").font(.system(size: 13, weight: .bold)).frame(maxWidth: .infinity).padding(.vertical, 10).background(Color.gray.opacity(0.1)).foregroundStyle(slate900).clipShape(RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
+                }.buttonStyle(.plain)
             }
         }.padding(32).frame(width: 350).background(Color.white)
     }
