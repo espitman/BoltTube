@@ -3,8 +3,6 @@ package ir.boum.bolttube.tv
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -23,8 +21,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import kotlinx.coroutines.launch
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 
 class TvBrowseFragment : Fragment() {
 
@@ -169,7 +165,7 @@ class TvBrowseFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
-                    val libraryItems = state.library.map(::mediaToVideoItem)
+                    val libraryItems = state.library.sortedByDescending { it.createdAt }.map(::mediaToVideoItem)
                     libraryAdapter.submit(libraryItems)
                     emptyView.visibility = if (libraryItems.isEmpty() && state.selectedChannel == null && state.selectedPlaylist == null) View.VISIBLE else View.GONE
 
@@ -214,7 +210,7 @@ class TvBrowseFragment : Fragment() {
                             val sectionModels = state.channelContent.map { section ->
                                 TvChannelSectionModel(
                                     title = section.playlist.name,
-                                    items = section.items.take(10).map(::mediaToVideoItem),
+                                    items = section.items.sortedByDescending { it.createdAt }.take(10).map(::mediaToVideoItem),
                                     playlist = section.playlist,
                                 )
                             }
@@ -260,6 +256,7 @@ class TvBrowseFragment : Fragment() {
             subtitle = "",
             thumbnailUrl = item.thumbnailUrl?.let(viewModel::absoluteMediaUrl),
             streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
+            createdAt = item.createdAt,
         )
     }
 
@@ -315,9 +312,6 @@ private class TvVideoCardAdapter(
 ) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
-        private val durationCache = ConcurrentHashMap<String, String>()
-        private val executor = Executors.newFixedThreadPool(2)
-        private val mainHandler = Handler(Looper.getMainLooper())
     }
 
     private val items = mutableListOf<VideoItem>()
@@ -358,7 +352,8 @@ private class TvVideoCardAdapter(
     ) : RecyclerView.ViewHolder(itemView) {
         private val imageView = itemView.findViewById<ImageView>(R.id.cardImage)
         private val titleView = itemView.findViewById<TextView>(R.id.cardTitle)
-        private val subtitleView = itemView.findViewById<TextView>(R.id.cardSubtitle)
+        private val dateView = itemView.findViewById<TextView>(R.id.cardDate)
+        private val badgeView = itemView.findViewById<TextView>(R.id.cardSubtitle)
         private var boundItem: VideoItem? = null
 
         init {
@@ -384,7 +379,8 @@ private class TvVideoCardAdapter(
             boundItem = item
             titleView.text = item.title
             titleView.isSelected = itemView.isFocused
-            subtitleView.text = durationCache[item.id] ?: ""
+            dateView.text = formatCreatedDate(item.createdAt)
+            badgeView.visibility = View.GONE // Hide duration badge for now as we don't have it
 
             if (isPersian(item.title)) {
                 try {
@@ -400,11 +396,57 @@ private class TvVideoCardAdapter(
             Glide.with(itemView)
                 .load(item.thumbnailUrl)
                 .centerCrop()
-                .placeholder(android.R.color.transparent)
                 .error(android.R.color.transparent)
                 .into(imageView)
+        }
 
-            loadDuration(item)
+        private fun formatCreatedDate(createdAt: String): String {
+            if (createdAt.isBlank()) return ""
+            
+            return try {
+                // Remove millisecond variants to make parsing simpler for older Android versions
+                val cleanDate = createdAt.split(".").firstOrNull()?.let { 
+                    if (it.endsWith("Z")) it else "${it}Z" 
+                } ?: createdAt
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val instant = try {
+                        // OffsetDateTime handles +00:00 much better than Instant.parse directly
+                        java.time.OffsetDateTime.parse(createdAt).toInstant()
+                    } catch (e: Exception) {
+                        java.time.Instant.parse(cleanDate)
+                    }
+                    
+                    val now = java.time.Instant.now()
+                    val diff = java.time.Duration.between(instant, now).toMillis()
+                    val weekMillis = 7L * 24 * 60 * 60 * 1000
+
+                    if (diff < weekMillis) {
+                        val seconds = diff / 1000
+                        val minutes = seconds / 60
+                        val hours = minutes / 60
+                        val days = hours / 24
+
+                        when {
+                            days > 0 -> "$days days ago"
+                            hours > 0 -> "$hours hours ago"
+                            minutes > 0 -> "$minutes minutes ago"
+                            seconds > 0 -> "$seconds seconds ago"
+                            else -> "Just now"
+                        }
+                    } else {
+                        val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                            .withZone(java.time.ZoneId.systemDefault())
+                        formatter.format(instant)
+                    }
+                } else {
+                    // Simple manual parse for older devices
+                    createdAt.split("T").firstOrNull() ?: ""
+                }
+            } catch (e: Exception) {
+                // If parsing fails, just show the date part of the string
+                createdAt.split("T").firstOrNull() ?: ""
+            }
         }
 
         private fun isPersian(text: String): Boolean {
@@ -414,40 +456,5 @@ private class TvVideoCardAdapter(
             return false
         }
 
-        private fun loadDuration(item: VideoItem) {
-            durationCache[item.id]?.let { cached ->
-                subtitleView.text = cached
-                return
-            }
-
-            val expectedId = item.id
-            executor.execute {
-                val duration = runCatching {
-                    android.media.MediaMetadataRetriever().use { retriever ->
-                        retriever.setDataSource(item.streamUrl, emptyMap())
-                        val millis = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                            ?.toLongOrNull()
-                            ?: 0L
-                        formatDuration(millis)
-                    }
-                }.getOrElse { "" }
-
-                durationCache[expectedId] = duration
-                mainHandler.post {
-                    if (boundItem?.id == expectedId) {
-                        subtitleView.text = duration
-                    }
-                }
-            }
-        }
-
-        private fun formatDuration(durationMs: Long): String {
-            val totalSeconds = (durationMs / 1000).coerceAtLeast(0)
-            val hours = totalSeconds / 3600
-            val minutes = (totalSeconds % 3600) / 60
-            val seconds = totalSeconds % 60
-            return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds)
-            else String.format("%02d:%02d", minutes, seconds)
-        }
     }
 }

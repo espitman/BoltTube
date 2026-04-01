@@ -72,10 +72,10 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/cardDate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:text="BoltTube"
             android:textColor="@color/tv_muted"
             android:textSize="11sp" />
     </LinearLayout>
