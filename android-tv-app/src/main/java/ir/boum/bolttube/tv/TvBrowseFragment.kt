@@ -1,23 +1,25 @@
 package ir.boum.bolttube.tv
 
 import android.content.Intent
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.text.TextUtils
-import android.util.Log
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
+import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import kotlinx.coroutines.launch
@@ -28,9 +30,18 @@ class TvBrowseFragment : Fragment() {
 
     val viewModel: TvViewModel by activityViewModels()
 
+    private lateinit var libraryContent: View
+    private lateinit var channelDetailContent: View
     private lateinit var libraryGrid: RecyclerView
+    private lateinit var channelScrollView: NestedScrollView
+    private lateinit var channelSectionsContainer: LinearLayout
     private lateinit var emptyView: TextView
-    private lateinit var adapter: TvLibraryAdapter
+    private lateinit var channelEmptyView: TextView
+    private lateinit var channelLoading: View
+    private lateinit var channelTitle: TextView
+    private lateinit var channelHeroImage: ImageView
+    private lateinit var channelBackButton: View
+    private lateinit var libraryAdapter: TvVideoCardAdapter
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -43,21 +54,33 @@ class TvBrowseFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        adapter = TvLibraryAdapter { item ->
-            startActivity(
-                Intent(requireContext(), VideoPlayerActivity::class.java)
-                    .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
-                    .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title),
-            )
-        }
+        libraryAdapter = TvVideoCardAdapter(::openVideo)
+        libraryContent = view.findViewById(R.id.libraryContent)
+        channelDetailContent = view.findViewById(R.id.channelDetailContent)
+        emptyView = view.findViewById(R.id.emptyView)
+        channelEmptyView = view.findViewById(R.id.channelEmptyView)
+        channelLoading = view.findViewById(R.id.channelLoading)
+        channelTitle = view.findViewById(R.id.channelTitle)
+        channelHeroImage = view.findViewById(R.id.channelHeroImage)
+        channelBackButton = view.findViewById(R.id.channelBackButton)
 
         libraryGrid = view.findViewById<RecyclerView>(R.id.libraryGrid).apply {
             layoutManager = GridLayoutManager(requireContext(), 3)
-            adapter = this@TvBrowseFragment.adapter
+            adapter = libraryAdapter
             itemAnimator = null
         }
 
-        emptyView = view.findViewById(R.id.emptyView)
+        channelScrollView = view.findViewById(R.id.channelScrollView)
+        channelSectionsContainer = view.findViewById(R.id.channelSectionsContainer)
+
+        channelBackButton.setOnClickListener {
+            viewModel.clearSelectedChannel()
+        }
+        channelBackButton.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                channelScrollView.smoothScrollTo(0, 0)
+            }
+        }
 
         observeViewModel()
     }
@@ -71,36 +94,145 @@ class TvBrowseFragment : Fragment() {
         viewModel.saveServerUrl(url)
     }
 
+    private fun openVideo(item: VideoItem) {
+        startActivity(
+            Intent(requireContext(), VideoPlayerActivity::class.java)
+                .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
+                .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title),
+        )
+    }
+
+    private fun ensureSectionVisible(sectionView: View, focusedCardView: View) {
+        val sectionRect = Rect()
+        channelScrollView.offsetDescendantRectToMyCoords(sectionView, sectionRect)
+
+        val cardRect = Rect()
+        channelScrollView.offsetDescendantRectToMyCoords(focusedCardView, cardRect)
+
+        val topInset = dpToPx(12)
+        val bottomInset = dpToPx(40)
+        val topSafe = topInset
+        val bottomSafe = channelScrollView.height - channelScrollView.paddingBottom - bottomInset
+        val desiredTop = minOf(sectionRect.top, cardRect.top) - topInset
+        val desiredBottom = maxOf(sectionRect.bottom, cardRect.bottom) + bottomInset
+
+        val dy = when {
+            desiredTop < topSafe -> desiredTop - topSafe
+            desiredBottom > bottomSafe -> desiredBottom - bottomSafe
+            else -> 0
+        }
+        if (dy != 0) channelScrollView.smoothScrollBy(0, dy)
+    }
+
+    private fun dpToPx(value: Int): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value.toFloat(),
+            resources.displayMetrics,
+        ).toInt()
+    }
+
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
-                    val items = state.library.map { item ->
-                        val rawName = item.fileName.removeSuffix(".mp4")
-                        // Improved Clean: Remove leading numbers (1_, 01. , 01 - ) and replace underscores
-                        val cleanTitle = rawName.replaceFirst(Regex("^\\d+[\\s._\\-]*"), "")
-                            .replace("_", " ")
-                            .trim()
+                    val libraryItems = state.library.map(::mediaToVideoItem)
+                    libraryAdapter.submit(libraryItems)
+                    emptyView.visibility = if (libraryItems.isEmpty() && state.selectedChannel == null) View.VISIBLE else View.GONE
 
-                        VideoItem(
-                            id = item.id,
-                            title = cleanTitle,
-                            subtitle = "",
-                            thumbnailUrl = item.thumbnailUrl,
-                            streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
-                        )
+                    if (state.selectedChannel == null) {
+                        libraryContent.visibility = View.VISIBLE
+                        channelDetailContent.visibility = View.GONE
+                    } else {
+                        libraryContent.visibility = View.GONE
+                        channelDetailContent.visibility = View.VISIBLE
+
+                        channelTitle.text = state.selectedChannel.name
+                        if (state.selectedChannel.thumbnailUrl.isNullOrBlank()) {
+                            channelHeroImage.setImageDrawable(null)
+                        } else {
+                            Glide.with(channelHeroImage)
+                                .load(viewModel.absoluteMediaUrl(state.selectedChannel.thumbnailUrl))
+                                .centerCrop()
+                                .into(channelHeroImage)
+                        }
+
+                        channelLoading.visibility = if (state.channelContentLoading) View.VISIBLE else View.GONE
+                        val sectionModels = state.channelContent.map { section ->
+                            TvChannelSectionModel(
+                                title = section.playlist.name,
+                                items = section.items.map(::mediaToVideoItem),
+                            )
+                        }
+                        renderChannelSections(sectionModels)
+                        if (!state.channelContentLoading && sectionModels.isNotEmpty()) {
+                            channelScrollView.post { channelScrollView.scrollTo(0, 0) }
+                        }
+                        channelEmptyView.text = if (state.channelContentLoading) "" else getString(R.string.empty_channel)
+                        channelEmptyView.visibility = if (!state.channelContentLoading && sectionModels.isEmpty()) View.VISIBLE else View.GONE
                     }
-                    adapter.submit(items)
-                    emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
                 }
             }
         }
     }
+
+    private fun mediaToVideoItem(item: MediaSummary): VideoItem {
+        val displayTitle = item.title.ifBlank {
+            item.fileName.removeSuffix(".mp4")
+                .replaceFirst(Regex("^\\d+[\\s._\\-]*"), "")
+                .replace("_", " ")
+                .trim()
+        }
+        return VideoItem(
+            id = item.id,
+            title = displayTitle,
+            subtitle = "",
+            thumbnailUrl = item.thumbnailUrl?.let(viewModel::absoluteMediaUrl),
+            streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
+        )
+    }
+
+    private fun renderChannelSections(sections: List<TvChannelSectionModel>) {
+        channelSectionsContainer.removeAllViews()
+        sections.forEach { section ->
+            val sectionView = layoutInflater.inflate(
+                R.layout.item_channel_section,
+                channelSectionsContainer,
+                false,
+            )
+            val titleView = sectionView.findViewById<TextView>(R.id.sectionTitle)
+            val itemsView = sectionView.findViewById<RecyclerView>(R.id.sectionItems)
+            val adapter = TvVideoCardAdapter(
+                onClick = ::openVideo,
+                onFocusGained = { focusedCard -> ensureSectionVisible(sectionView, focusedCard) },
+                horizontalCardWidthPx = homeCardWidthPx(),
+            )
+
+            titleView.text = section.title
+            itemsView.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+            itemsView.adapter = adapter
+            adapter.submit(section.items)
+
+            channelSectionsContainer.addView(sectionView)
+        }
+    }
+
+    private fun homeCardWidthPx(): Int {
+        val contentWidth = libraryGrid.width - libraryGrid.paddingStart - libraryGrid.paddingEnd
+        return if (contentWidth > 0) contentWidth / 3 else dpToPx(320)
+    }
 }
 
-private class TvLibraryAdapter(
+private data class TvChannelSectionModel(
+    val title: String,
+    val items: List<VideoItem>,
+)
+
+private class TvVideoCardAdapter(
     private val onClick: (VideoItem) -> Unit,
-) : RecyclerView.Adapter<TvLibraryAdapter.VideoViewHolder>() {
+    private val onFocusGained: ((View) -> Unit)? = null,
+    private val horizontalCardWidthPx: Int? = null,
+) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
         private val durationCache = ConcurrentHashMap<String, String>()
@@ -119,7 +251,14 @@ private class TvLibraryAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VideoViewHolder {
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_tv_video_card, parent, false)
-        return VideoViewHolder(view, onClick)
+        val layoutManager = (parent as? RecyclerView)?.layoutManager
+        if (layoutManager is LinearLayoutManager && layoutManager.orientation == LinearLayoutManager.HORIZONTAL && horizontalCardWidthPx != null) {
+            view.layoutParams = RecyclerView.LayoutParams(
+                horizontalCardWidthPx,
+                RecyclerView.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        return VideoViewHolder(view, onClick, onFocusGained)
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
@@ -131,6 +270,7 @@ private class TvLibraryAdapter(
     class VideoViewHolder(
         itemView: View,
         private val onClick: (VideoItem) -> Unit,
+        private val onFocusGained: ((View) -> Unit)?,
     ) : RecyclerView.ViewHolder(itemView) {
         private val imageView = itemView.findViewById<ImageView>(R.id.cardImage)
         private val titleView = itemView.findViewById<TextView>(R.id.cardTitle)
@@ -149,7 +289,10 @@ private class TvLibraryAdapter(
                     .setDuration(160)
                     .start()
                 titleView.alpha = if (hasFocus) 1f else 0.85f
-                titleView.isSelected = hasFocus // Trigger Translucent Marquee
+                titleView.isSelected = hasFocus
+                if (hasFocus) {
+                    onFocusGained?.invoke(view)
+                }
             }
         }
 
@@ -159,19 +302,17 @@ private class TvLibraryAdapter(
             titleView.isSelected = itemView.isFocused
             subtitleView.text = durationCache[item.id] ?: ""
 
-            // Apply Vazir font if Persian text is detected
             if (isPersian(item.title)) {
                 try {
                     val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, R.font.vazir)
                     titleView.typeface = vazir
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     titleView.setTypeface(null, android.graphics.Typeface.BOLD)
                 }
             } else {
                 titleView.setTypeface(null, android.graphics.Typeface.BOLD)
             }
 
-            Log.d("TvLibraryAdapter", "Loading thumb for ${item.title}: ${item.thumbnailUrl}")
             Glide.with(itemView)
                 .load(item.thumbnailUrl)
                 .centerCrop()

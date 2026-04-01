@@ -46,7 +46,6 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
-            <!-- MENU SECTION -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -60,31 +59,25 @@
                 android:id="@+id/sidebarHome"
                 style="@style/SidebarItem"
                 android:drawableStart="@drawable/ic_home"
-                android:nextFocusUp="@id/topRefresh"
                 android:text="Home" />
-                
-            <TextView
-                android:id="@+id/sidebarTrending"
-                style="@style/SidebarItem"
-                android:drawableStart="@drawable/ic_refresh"
-                android:text="Trending" />
 
-            <!-- LIBRARY SECTION -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="24dp"
                 android:layout_marginBottom="12dp"
-                android:text="LIBRARY"
+                android:text="CHANNELS"
                 android:textColor="@color/tv_muted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
-            <TextView
-                android:id="@+id/sidebarHistory"
-                style="@style/SidebarItem"
-                android:drawableStart="@drawable/ic_refresh"
-                android:text="History" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/sidebarChannels"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:nextFocusUp="@id/sidebarHome"
+                android:scrollbars="none" />
 
             <!-- EXTRA SECTION -->
             <TextView
@@ -112,27 +105,11 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <!-- TOP BAR (Search & Profile Icon like screenshot) -->
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="80dp"
+            android:layout_height="52dp"
             android:paddingStart="10dp"
             android:paddingEnd="16dp">
-
-            <ImageView
-                android:id="@+id/topRefresh"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_alignParentStart="true"
-                android:layout_centerVertical="true"
-                android:background="@drawable/sidebar_item_selector"
-                android:clickable="true"
-                android:focusable="true"
-                android:focusableInTouchMode="true"
-                android:nextFocusDown="@id/sidebarHome"
-                android:padding="6dp"
-                android:src="@drawable/ic_refresh"
-                android:tint="@color/tv_muted" />
 
             <TextClock
                 android:id="@+id/topClock"

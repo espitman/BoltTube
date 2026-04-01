@@ -21,6 +21,16 @@ class MediaRepository {
         return client.get("$normalized/api/items").body<MediaLibraryResponse>().items
     }
 
+    suspend fun fetchChannels(serverUrl: String): List<ChannelSummary> {
+        val normalized = serverUrl.trim().trimEnd('/')
+        return client.get("$normalized/api/channels").body<ChannelResponse>().items
+    }
+
+    suspend fun fetchChannelContent(serverUrl: String, channelId: Int): List<ChannelSection> {
+        val normalized = serverUrl.trim().trimEnd('/')
+        return client.get("$normalized/api/channels/$channelId/content").body<ChannelContentResponse>().content
+    }
+
     fun close() {
         client.close()
     }

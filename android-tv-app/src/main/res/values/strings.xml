@@ -10,5 +10,6 @@
     <string name="row_actions">Actions</string>
     <string name="row_library">Library</string>
     <string name="empty_library">No videos found on the Mac app.</string>
+    <string name="empty_channel">No content in this channel.</string>
     <string name="server_saved">Server updated.</string>
 </resources>

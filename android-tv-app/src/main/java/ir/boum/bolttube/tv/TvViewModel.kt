@@ -24,7 +24,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<TvUiState> = _uiState.asStateFlow()
 
     init {
-        refreshLibrary()
+        refreshAll()
     }
 
     fun refreshLibrary() {
@@ -52,11 +52,81 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun refreshChannels() {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repository.fetchChannels(serverUrl)
+            }.onSuccess { channels ->
+                val selectedId = _uiState.value.selectedChannel?.id
+                val selected = channels.firstOrNull { it.id == selectedId }
+                _uiState.value = _uiState.value.copy(
+                    serverUrl = serverUrl,
+                    channels = channels,
+                    selectedChannel = selected,
+                )
+                if (selected != null) {
+                    loadChannelContent(selected)
+                }
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    error = error.message ?: "Could not load channels.",
+                )
+            }
+        }
+    }
+
+    fun refreshAll() {
+        refreshLibrary()
+        refreshChannels()
+    }
+
+    fun selectChannel(channel: ChannelSummary) {
+        _uiState.value = _uiState.value.copy(
+            selectedChannel = channel,
+            channelContent = emptyList(),
+            channelContentLoading = true,
+            error = "",
+        )
+        loadChannelContent(channel)
+    }
+
+    fun clearSelectedChannel() {
+        _uiState.value = _uiState.value.copy(
+            selectedChannel = null,
+            channelContent = emptyList(),
+            channelContentLoading = false,
+        )
+    }
+
+    private fun loadChannelContent(channel: ChannelSummary) {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repository.fetchChannelContent(serverUrl, channel.id)
+            }.onSuccess { content ->
+                if (_uiState.value.selectedChannel?.id != channel.id) return@onSuccess
+                _uiState.value = _uiState.value.copy(
+                    channelContent = content,
+                    channelContentLoading = false,
+                    error = "",
+                )
+            }.onFailure { error ->
+                if (_uiState.value.selectedChannel?.id != channel.id) return@onFailure
+                _uiState.value = _uiState.value.copy(
+                    channelContent = emptyList(),
+                    channelContentLoading = false,
+                    error = error.message ?: "Could not load channel content.",
+                )
+            }
+        }
+    }
+
     fun saveServerUrl(url: String) {
         val normalized = url.trim().ifBlank { DEFAULT_SERVER_URL }.trimEnd('/')
         prefs.edit().putString(SERVER_URL_KEY, normalized).apply()
         _uiState.value = _uiState.value.copy(serverUrl = normalized, message = "Server updated.", error = "")
-        refreshLibrary()
+        refreshAll()
     }
 
     fun absoluteMediaUrl(relativeOrAbsolute: String): String {

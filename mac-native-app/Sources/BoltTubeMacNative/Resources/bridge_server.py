@@ -100,9 +100,25 @@ def get_channel_content(channel_id):
     playlists = library.repo.get_channel_playlists(channel_id)
     content = []
     for p in playlists:
-        items = library.repo.get_playlist_items(p["id"])[:10]
+        raw_items = library.repo.get_playlist_items(p["id"])[:10]
+        items = [{
+            "id": item["id"],
+            "fileName": item["file_name"],
+            "title": item.get("title") or item["file_name"].replace(".mp4", ""),
+            "streamUrl": item["stream_url"],
+            "size": item["size"],
+            "createdAt": item["created_at"],
+            "thumbnailUrl": item.get("thumbnail_url"),
+            "duration": item.get("duration", 0),
+        } for item in raw_items]
         content.append({
-            "playlist": p,
+            "playlist": {
+                "id": p["id"],
+                "name": p["name"],
+                "thumbnail_url": p.get("thumbnail_url"),
+                "created_at": p["created_at"],
+                "item_count": p.get("item_count", 0),
+            },
             "items": items
         })
     return jsonify({"content": content})
