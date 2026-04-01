@@ -11,7 +11,7 @@
     <color name="tv_focus">#0455B1</color>
     <color name="tv_black">#000000</color>
     <color name="tv_white">#FFFFFF</color>
-    <color name="tv_sidebar_selected_bg">#F2F2F2</color>
+    <color name="tv_sidebar_selected_bg">#E0E0E0</color>
 
     <!-- MEDIA3 & EXOPLAYER OVERRIDES (YouTube Theme Guarantee) -->
     <color name="lib_media3_player_seek_bar_played_color">#FF0000</color>

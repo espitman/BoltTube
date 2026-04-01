@@ -63,7 +63,7 @@ class TvBrowseFragment : Fragment() {
         libraryAdapter = TvVideoCardAdapter(::openVideo)
         playlistAdapter = TvVideoCardAdapter(
             onClick = ::openVideo,
-            nextFocusUpProvider = { pos -> if (pos < 4) R.id.playlistBackButton else View.NO_ID }
+            nextFocusUpProvider = { pos -> if (pos < 3) R.id.playlistBackButton else View.NO_ID }
         )
 
         libraryContent = view.findViewById(R.id.libraryContent)
@@ -187,8 +187,10 @@ class TvBrowseFragment : Fragment() {
 
                             val items = state.playlistContent.map(::mediaToVideoItem)
                             playlistAdapter.submit(items)
-                            if (state.playlistLoading) {
-                                // show loading if added
+                            if (!state.playlistLoading && items.isNotEmpty()) {
+                                playlistGrid.post {
+                                    playlistGrid.getChildAt(0)?.requestFocus()
+                                }
                             }
                         }
                         state.selectedChannel != null -> {
