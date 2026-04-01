@@ -35,7 +35,7 @@
         <FrameLayout
             android:id="@+id/channelHero"
             android:layout_width="match_parent"
-            android:layout_height="112dp"
+            android:layout_height="72dp"
             android:background="@color/tv_focus"
             android:elevation="24dp">
 
@@ -55,9 +55,9 @@
                 android:id="@+id/channelBackButton"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
-                android:layout_gravity="start|bottom"
+                android:layout_gravity="start|top"
                 android:layout_marginStart="24dp"
-                android:layout_marginBottom="18dp"
+                android:layout_marginTop="18dp"
                 android:background="@drawable/sidebar_item_selector"
                 android:clickable="true"
                 android:focusable="true"
