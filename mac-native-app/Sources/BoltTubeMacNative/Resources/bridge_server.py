@@ -53,7 +53,7 @@ def _stable_t(url: str, yt: Optional[YouTube] = None) -> str:
 @app.route("/health")
 def health(): return jsonify({"status": "ok", "port": 9864, "downloadDir": str(library.download_dir) if library else ""})
 
-@app.route("/api/library")
+@app.route("/api/items")
 def list_library():
     return jsonify({"items": library.list_items() if library else []})
 
