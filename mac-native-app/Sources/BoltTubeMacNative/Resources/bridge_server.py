@@ -94,6 +94,39 @@ def get_playlist_items(p_id):
     if not library: return jsonify({"items": []})
     return jsonify({"items": library.repo.get_playlist_items(p_id)})
 
+# --- NEW: Channels API ---
+@app.route("/api/channels")
+def list_channels():
+    if not library: return jsonify({"items": []})
+    return jsonify({"items": library.repo.get_channels()})
+
+@app.route("/api/channels/create", methods=["POST"])
+def create_channel():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    c_id = library.repo.create_channel(data["name"], data.get("thumbnailUrl"))
+    return jsonify({"status": "ok", "id": c_id})
+
+@app.route("/api/channels/add", methods=["POST"])
+def add_playlist_to_channel():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    library.repo.add_playlist_to_channel(int(data["channelId"]), int(data["playlistId"]))
+    return jsonify({"status": "ok"})
+
+@app.route("/api/channels/delete", methods=["POST"])
+def delete_channel():
+    if not library: return jsonify({"error": "not init"}), 500
+    library.repo.delete_channel(int(request.json["id"]))
+    return jsonify({"status": "ok"})
+
+@app.route("/api/channels/update", methods=["POST"])
+def update_channel():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    library.repo.update_channel(int(data["id"]), data["name"])
+    return jsonify({"status": "ok"})
+
 @app.route("/media/<media_id>")
 def serve_video(media_id):
     if not library: return "Not initialized", 500

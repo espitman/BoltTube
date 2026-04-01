@@ -45,6 +45,26 @@ class MediaRepository:
                     created_at TEXT
                 )
             """)
+            # NEW: Channels Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS channels (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    thumbnail_url TEXT,
+                    created_at TEXT
+                )
+            """)
+            # NEW: Channel Playlists (Junction)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS channel_playlists (
+                    channel_id INTEGER,
+                    playlist_id INTEGER,
+                    added_at TEXT,
+                    FOREIGN KEY(channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+                    FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                    PRIMARY KEY(channel_id, playlist_id)
+                )
+            """)
             try: conn.execute("ALTER TABLE playlists ADD COLUMN thumbnail_url TEXT")
             except sqlite3.OperationalError: pass
 
@@ -132,3 +152,40 @@ class MediaRepository:
     def delete_playlist(self, playlist_id: int):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+
+    # --- NEW: Channels ---
+    def create_channel(self, name: str, thumb: Optional[str] = None) -> int:
+        from datetime import datetime
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute("INSERT INTO channels (name, thumbnail_url, created_at) VALUES (?, ?, ?)", (name, thumb, datetime.now().isoformat()))
+            return cursor.lastrowid
+
+    def get_channels(self) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("""
+                SELECT c.*, COUNT(cp.playlist_id) as playlist_count 
+                FROM channels c 
+                LEFT JOIN channel_playlists cp ON c.id = cp.channel_id 
+                GROUP BY c.id 
+                ORDER BY c.created_at DESC
+            """).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_playlist_to_channel(self, channel_id: int, playlist_id: int):
+        from datetime import datetime
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("INSERT OR IGNORE INTO channel_playlists (channel_id, playlist_id, added_at) VALUES (?, ?, ?)", (channel_id, playlist_id, datetime.now().isoformat()))
+            conn.execute("""
+                UPDATE channels 
+                SET thumbnail_url = (SELECT thumbnail_url FROM playlists WHERE id = ?) 
+                WHERE id = ? AND (thumbnail_url IS NULL OR thumbnail_url = '')
+            """, (playlist_id, channel_id))
+
+    def update_channel(self, channel_id: int, name: str):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE channels SET name = ? WHERE id = ?", (name, channel_id))
+
+    def delete_channel(self, channel_id: int):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM channels WHERE id = ?", (channel_id,))

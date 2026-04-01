@@ -23,6 +23,10 @@ struct Playlist: Codable, Identifiable, Hashable {
     let id: Int; let name: String; let thumbnailUrl: String?; let createdAt: String; let itemCount: Int
 }
 
+struct Channel: Codable, Identifiable, Hashable {
+    let id: Int; let name: String; let thumbnailUrl: String?; let createdAt: String; let playlistCount: Int
+}
+struct ChannelResponse: Codable { let items: [Channel] }
 struct PlaylistResponse: Codable { let items: [Playlist] }
 struct MediaLibraryResponse: Codable { let items: [MediaLibraryItem] }
 struct DownloadResponse: Codable { let id: String; let streamUrl: String; let fileName: String }
@@ -42,23 +46,52 @@ struct HealthResponse: Codable { let status: String; let port: Int; let download
 @Observable
 @MainActor
 final class ServerController {
-    var videoURL = ""; var resolvedTitle = ""; var resolvedThumbnailUrl = ""; var resolvedDurationSeconds: Int = 0; var lastDownloadedFileName = ""; var formats: [RemoteFormat] = []; var selectedFormatID = "best"; var downloads: [DownloadTask] = []; var libraryItems: [MediaLibraryItem] = []; var playlists: [Playlist] = []; var refreshingIDs: Set<String> = []; var logs: String = ""
-
-    var selectedPlaylist: Playlist? = nil
-    var playlistItems: [MediaLibraryItem] = []
-    var isFetchingPlaylistItems = false
+    var videoURL = ""; var resolvedTitle = ""; var resolvedThumbnailUrl = ""; var resolvedDurationSeconds: Int = 0; var lastDownloadedFileName = ""; var formats: [RemoteFormat] = []; var selectedFormatID = "best"
+    var libraryItems: [MediaLibraryItem] = []; var playlists: [Playlist] = []; var channels: [Channel] = []; var refreshingIDs: Set<String> = []; var logs: String = ""
+    var selectedPlaylist: Playlist? = nil; var playlistItems: [MediaLibraryItem] = []; var isFetchingPlaylistItems = false
+    var selectedChannel: Channel? = nil; var channelPlaylists: [Playlist] = []; var isFetchingChannelPlaylists = false
+    var activeManagementTab: Int = 0 // 0: Playlists, 1: Channels
 
     var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingQualities = false; var isDownloading = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
     private var shareServerProcess: Process?; private var shareServerOutputPipe: Pipe?; private var qualityRefreshTask: Task<Void, Never>?; private var sleepAssertionID: IOPMAssertionID = 0; private var activeDownloadProcess: Process?; private var activeDownloadTempName: String = ""; private var lastProgressBytes: Double = 0; private var lastProgressTime: Date = Date()
 
     init() {
         let defaultDirectory = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Movies/BoltTubeNative", directoryHint: .isDirectory); self.downloadDirectory = defaultDirectory; ensureDirectoryExists(defaultDirectory)
-        Task { await startShareServer(); await refreshLibrary(); await refreshPlaylists() }
+        Task { await startShareServer(); await refreshLibrary(); await refreshPlaylists(); await refreshChannels() }
     }
 
     var statusLine: String { isShareServerRunning ? "Share server is running" : "Share server is stopped" }
     var serverURLDisplay: String { "http://127.0.0.1:\(normalizedPort)" }
     var lanURLDisplay: String { "http://\(localIPAddress() ?? "YOUR-MAC-IP"):\(normalizedPort)" }
+
+    func refreshChannels() async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels") else { return }
+        do { let (data, response) = try await URLSession.shared.data(from: url); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(ChannelResponse.self, from: data); channels = decoded.items } catch { appendLog("Channels refresh failed.") }
+    }
+
+    func createChannel(name: String) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels/create") else { return }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body = ["name": name]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Create channel failed.") }
+    }
+
+    func deleteChannel(id: Int) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels/delete") else { return }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body = ["id": id]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Delete channel failed.") }
+    }
+
+    func updateChannel(id: Int, name: String) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels/update") else { return }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body: [String: Any] = ["id": id, "name": name]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Update channel failed.") }
+    }
+
+    func addPlaylistToChannel(channelID: Int, playlistID: Int) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels/add") else { return }
+        var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body: [String: Any] = ["channelId": channelID, "playlistId": playlistID]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Add playlist to channel failed.") }
+    }
 
     func chooseDownloadDirectory() {
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false; panel.prompt = "Select"
