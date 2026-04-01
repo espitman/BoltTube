@@ -234,17 +234,30 @@ struct ContentView: View {
 
     private func playerOverlay() -> some View {
         ZStack {
-            Color.black.opacity(0.3).background(.ultraThinMaterial).ignoresSafeArea().onTapGesture { closePlayer() }
+            Color.black.opacity(0.4)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea()
+                .onTapGesture { closePlayer() }
+            
             VStack(spacing: 0) {
                 if let p = player {
                     VideoPlayer(player: p)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(alignment: .topTrailing) {
-                            Button { closePlayer() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 24)).foregroundStyle(.white.opacity(0.7)).padding(16) }.buttonStyle(.plain)
+                            Button { closePlayer() } label: { 
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(.white.opacity(0.7))
+                                    .padding(16) 
+                            }.buttonStyle(.plain)
                         }
                 }
             }
-        }.frame(width: 800, height: 480).background(Color.black).clipShape(RoundedRectangle(cornerRadius: 16)).shadow(color: .black.opacity(0.3), radius: 30)
+            .frame(width: 800, height: 480)
+            .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.3), radius: 30)
+        }
     }
 
     private func placeholderView(title: String) -> some View { VStack { Text(title).font(.system(size: 24, weight: .bold)).foregroundStyle(slate600.opacity(0.4)) }.frame(maxWidth: .infinity, maxHeight: .infinity) }
