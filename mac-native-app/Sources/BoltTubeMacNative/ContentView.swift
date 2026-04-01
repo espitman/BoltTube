@@ -297,31 +297,42 @@ struct VideoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: onPlay) {
-                ZStack(alignment: .bottomTrailing) {
+                ZStack {
                     if let thumb = item.thumbnailUrl, !thumb.isEmpty {
                         AsyncImage(url: URL(string: thumb)) { phase in
-                            if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                            else { Color.black.overlay { ProgressView().scaleEffect(0.5) } }
+                            if let image = phase.image {
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            } else {
+                                Color.black.overlay { ProgressView().scaleEffect(0.5) }
+                            }
                         }
-                    } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 32)) } }
-                    
+                    } else {
+                        Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 32)) }
+                    }
+                }
+                .frame(height: 140)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+                .overlay(alignment: .bottomTrailing) {
                     if item.duration > 0 {
                         Text(formatDuration(item.duration))
                             .font(.system(size: 11, weight: .bold))
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.black.opacity(0.75)).foregroundStyle(.white)
+                            .background(.black.opacity(0.8)).foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .padding(8)
-                            .zIndex(1)
+                            .zIndex(10)
                     }
-                    
+                }
+                .overlay {
                     if controller.refreshingIDs.contains(item.id) {
                         ZStack {
                             Color.black.opacity(0.4)
                             ProgressView().controlSize(.small).tint(.white).scaleEffect(0.8)
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: .black.opacity(0.1), radius: 8, y: 4)
+                }
             }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2)
@@ -344,31 +355,41 @@ struct RecentCardCompact: View {
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onPlay) {
-                ZStack(alignment: .bottomTrailing) {
+                ZStack {
                     if let thumb = item.thumbnailUrl, !thumb.isEmpty {
                         AsyncImage(url: URL(string: thumb)) { phase in
-                            if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                            else { Color.gray.opacity(0.1) }
+                            if let image = phase.image {
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            } else {
+                                Color.gray.opacity(0.1)
+                            }
                         }
-                    } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) }
-                    
+                    } else {
+                        RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1))
+                    }
+                }
+                .frame(width: 80, height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(alignment: .bottomTrailing) {
                     if item.duration > 0 {
                         Text(formatDuration(item.duration))
                             .font(.system(size: 8, weight: .bold))
                             .padding(.horizontal, 4).padding(.vertical, 2)
-                            .background(.black.opacity(0.75)).foregroundStyle(.white)
+                            .background(.black.opacity(0.8)).foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                             .padding(4)
-                            .zIndex(1)
+                            .zIndex(10)
                     }
-                    
+                }
+                .overlay {
                     if controller.refreshingIDs.contains(item.id) {
                         ZStack {
                             Color.black.opacity(0.4)
                             ProgressView().controlSize(.small).tint(.white).scaleEffect(0.6)
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8))
+                }
             }.buttonStyle(.plain)
             Button(action: onPlay) {
                 Text(item.title)

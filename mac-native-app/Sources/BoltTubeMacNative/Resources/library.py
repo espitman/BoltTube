@@ -38,16 +38,19 @@ class MediaLibrary:
             result = []
             for r in items:
                 duration = r.get("duration", 0)
-                title = r.get("title") or r.get("file_name", "").replace(".mp4", "")
-                
-                # Backfill logic for old items
+                # Aggressive backfill for duration and title
                 if duration == 0:
                     duration = self.reprobe_item(r["id"], r["file_path"])
+                
+                final_title = r.get("title")
+                if not final_title or final_title == r.get("file_name"):
+                    # If title is missing or just fileName, try to clean it
+                    final_title = r.get("file_name", "").replace(".mp4", "")
                 
                 result.append({
                     "id": r["id"],
                     "fileName": r["file_name"],
-                    "title": title,
+                    "title": final_title,
                     "streamUrl": r["stream_url"],
                     "size": r["size"],
                     "createdAt": r["created_at"],
