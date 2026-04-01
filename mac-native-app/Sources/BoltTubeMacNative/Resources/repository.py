@@ -14,6 +14,7 @@ class MediaItem:
     source_url: str = ""
     thumbnail_url: str = ""
     duration: int = 0
+    title: str = ""
 
 class MediaRepository:
     def __init__(self, db_path: Path):
@@ -22,6 +23,7 @@ class MediaRepository:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
+            # Main Media Items Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS media_items (
                     id TEXT PRIMARY KEY,
@@ -32,9 +34,11 @@ class MediaRepository:
                     created_at TEXT,
                     source_url TEXT,
                     thumbnail_url TEXT,
-                    duration INTEGER DEFAULT 0
+                    duration INTEGER DEFAULT 0,
+                    title TEXT
                 )
             """)
+            # Playlists Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,10 +46,16 @@ class MediaRepository:
                     created_at TEXT
                 )
             """)
+            # Migration: Ensure new columns exist for old databases
             try:
                 conn.execute("ALTER TABLE media_items ADD COLUMN duration INTEGER DEFAULT 0")
-            except sqlite3.OperationalError: pass # Already exists
+            except sqlite3.OperationalError: pass
+            
+            try:
+                conn.execute("ALTER TABLE media_items ADD COLUMN title TEXT")
+            except sqlite3.OperationalError: pass
 
+            # Junction Table for Playlist items
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlist_items (
                     playlist_id INTEGER,
@@ -61,9 +71,9 @@ class MediaRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO media_items 
-                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration))
+                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title))
 
     def delete_item(self, media_id: str):
         with sqlite3.connect(self.db_path) as conn:
@@ -72,11 +82,11 @@ class MediaRepository:
     def get_item(self, media_id: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration FROM media_items WHERE id = ?", (media_id,)).fetchone()
+            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title FROM media_items WHERE id = ?", (media_id,)).fetchone()
             return dict(row) if row else None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration FROM media_items ORDER BY created_at DESC").fetchall()
+            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]

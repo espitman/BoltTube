@@ -99,7 +99,7 @@ class BridgeService:
             subprocess.run([ffmpeg, "-nostdin", "-y", "-i", str(v_p), "-i", str(a_p), "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", str(f_path)], capture_output=True, stdin=subprocess.DEVNULL)
             v_p.unlink(missing_ok=True); a_p.unlink(missing_ok=True)
 
-        item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)))
+        item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)), title=getattr(yt, "title", f_path.stem))
         return {"id": item.id, "streamUrl": item.stream_url, "fileName": item.file_name}
 
     def list_items(self):
@@ -128,6 +128,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if p == "/api/resolve": self._send_json(self.service.resolve(data["url"]))
         elif p == "/api/download": self._send_json(self.service.download_with_progress(data["url"], data["formatId"]))
         elif p == "/api/delete": self._send_json({"status": "deleted"} if self.service.library.remove(data["id"]) else {"status": "not_found"})
+        elif p == "/api/refresh-metadata": self._send_json({"status": "ok", "metadata": self.service.library.refresh_metadata(data["id"])} if hasattr(self.service.library, 'refresh_metadata') else {"status": "error"})
 
 def main():
     parser = argparse.ArgumentParser()

@@ -27,6 +27,8 @@ struct MediaLibraryItem: Codable, Identifiable, Hashable {
     let createdAt: String
     let thumbnailUrl: String?
     let duration: Int
+    let sourceUrl: String
+    let title: String
 }
 
 struct MediaLibraryResponse: Codable {
@@ -79,6 +81,13 @@ struct RemoteFormat: Codable, Identifiable, Hashable {
     let filesize: String
 }
 
+struct DownloadTask: Identifiable, Hashable {
+    let id: String
+    let title: String
+    var status: String
+    var progress: Double
+}
+
 struct ResolveResponse: Codable {
     let title: String
     let thumbnailUrl: String
@@ -96,7 +105,10 @@ final class ServerController {
     var lastDownloadedFileName = ""
     var formats: [RemoteFormat] = []
     var selectedFormatID = "best"
+    var downloads: [DownloadTask] = []
     var libraryItems: [MediaLibraryItem] = []
+    var refreshingIDs: Set<String> = []
+    var logs: String = ""
 
     var portText = "9864"
     var isShareServerRunning = false
@@ -297,6 +309,32 @@ final class ServerController {
             await refreshLibrary()
         } catch {
             appendLog("Network error during delete: \(error.localizedDescription)")
+        }
+    }
+
+    func refreshMetadata(id: String) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/refresh-metadata") else { return }
+        
+        await MainActor.run { refreshingIDs.insert(id) }
+        defer { Task { await MainActor.run { refreshingIDs.remove(id) } } }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: String] = ["id": id]
+        request.httpBody = try? JSONEncoder().encode(body)
+        
+        do {
+            appendLog("Refreshing metadata for \(id)...")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+                appendLog("Refresh API failed")
+                return
+            }
+            appendLog("Metadata refreshed.")
+            await refreshLibrary()
+        } catch {
+            appendLog("Refresh failed: \(error.localizedDescription)")
         }
     }
 

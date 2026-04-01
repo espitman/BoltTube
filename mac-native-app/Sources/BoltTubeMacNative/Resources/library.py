@@ -27,7 +27,8 @@ class MediaLibrary:
                 payload = json.loads(json_path.read_text(encoding="utf-8"))
                 items = payload.get("items", [])
                 for i in items:
-                    self.repo.save_item(MediaItem(**i))
+                    title = i.get("fileName", "").replace(".mp4", "")
+                    self.repo.save_item(MediaItem(**i, title=title))
                 json_path.rename(json_path.with_suffix(".json.bak"))
             except: pass
 
@@ -36,14 +37,23 @@ class MediaLibrary:
             items = self.repo.get_all_items()
             result = []
             for r in items:
+                duration = r.get("duration", 0)
+                title = r.get("title") or r.get("file_name", "").replace(".mp4", "")
+                
+                # Backfill logic for old items
+                if duration == 0:
+                    duration = self.reprobe_item(r["id"], r["file_path"])
+                
                 result.append({
                     "id": r["id"],
                     "fileName": r["file_name"],
+                    "title": title,
                     "streamUrl": r["stream_url"],
                     "size": r["size"],
                     "createdAt": r["created_at"],
                     "thumbnailUrl": r["thumbnail_url"],
-                    "duration": r.get("duration", 0)
+                    "sourceUrl": r.get("source_url", ""),
+                    "duration": duration
                 })
             return result
 
@@ -55,14 +65,40 @@ class MediaLibrary:
             res = subprocess.run(cmd, capture_output=True, text=True)
             data = json.loads(res.stdout)
             duration = int(float(data.get("format", {}).get("duration", 0)))
+            title = data.get("format", {}).get("tags", {}).get("title")
+            
             if duration > 0:
                 with self._lock:
                     with sqlite3.connect(self.repo.db_path) as conn:
-                        # Direct update to avoid MediaItem conversion overhead if not needed 
-                        conn.execute("UPDATE media_items SET duration = ? WHERE id = ?", (duration, item_id))
+                        if title:
+                            conn.execute("UPDATE media_items SET duration = ?, title = ? WHERE id = ?", (duration, title, item_id))
+                        else:
+                            conn.execute("UPDATE media_items SET duration = ? WHERE id = ?", (duration, item_id))
                 return duration
         except: pass
         return 0
+
+    def refresh_metadata(self, media_id: str):
+        with self._lock:
+            item_dict = self.repo.get_item(media_id)
+            if not item_dict or not item_dict["source_url"]: return None
+            
+            from pytubefix import YouTube
+            try:
+                yt = YouTube(item_dict["source_url"])
+                new_title = yt.title
+                new_thumb = yt.thumbnail_url
+                new_duration = int(getattr(yt, "length", 0))
+                
+                with sqlite3.connect(self.repo.db_path) as conn:
+                    conn.execute("""
+                        UPDATE media_items 
+                        SET title = ?, thumbnail_url = ?, duration = ? 
+                        WHERE id = ?
+                    """, (new_title, new_thumb, new_duration, media_id))
+                return {"title": new_title, "thumb": new_thumb, "duration": new_duration}
+            except: pass
+        return None
 
     def get_ffmpeg_path(self) -> str:
         for p in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]:
@@ -78,14 +114,18 @@ class MediaLibrary:
                 return True
         return False
 
-    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0) -> MediaItem:
+    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "") -> MediaItem:
         with self._lock:
             media_id = f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
             final_p = file_path.with_name(f"{media_id}{file_path.suffix}")
             file_path.rename(final_p)
+            
+            # Clean title
+            final_title = title if title else final_p.stem
+            
             item = MediaItem(id=media_id, file_name=final_p.name, file_path=str(final_p), stream_url=f"/media/{media_id}",
                             size=readable_size_internal(final_p.stat().st_size), created_at=datetime.now(timezone.utc).isoformat(), 
-                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration)
+                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title)
             self.repo.save_item(item)
             return item
 

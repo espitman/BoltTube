@@ -9,7 +9,7 @@ enum AppTab {
 }
 
 struct ContentView: View {
-    @Bindable var controller: ServerController
+    var controller: ServerController
     @State private var currentTab: AppTab = .home
     @State private var itemToDelete: MediaLibraryItem? = nil
     @State private var playingItem: MediaLibraryItem? = nil
@@ -43,7 +43,7 @@ struct ContentView: View {
             }
         }
         .overlay {
-            if let item = playingItem {
+            if let _ = playingItem {
                 playerOverlay()
             }
         }
@@ -75,7 +75,7 @@ struct ContentView: View {
             }
             Button("Cancel", role: .cancel) { itemToDelete = nil }
         } message: {
-            Text("This will permanently delete \"\(itemToDelete?.fileName ?? "")\" from disk.")
+            Text("This will permanently delete \"\(itemToDelete?.title ?? "")\" from disk.")
         }
     }
 
@@ -130,7 +130,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Add New Video").font(.system(size: 14, weight: .bold)).foregroundStyle(slate900)
                         HStack(spacing: 0) {
-                            TextField("Paste YouTube video link here...", text: $controller.videoURL)
+                            TextField("Paste YouTube video link here...", text: Bindable(controller).videoURL)
                                 .textFieldStyle(.plain).font(.system(size: 14)).foregroundStyle(slate900).padding(.horizontal, 20).padding(.vertical, 14).onSubmit { controller.scheduleQualityRefresh() }
                             Button { if let s = NSPasteboard.general.string(forType: .string) { controller.videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines); controller.scheduleQualityRefresh() } } label: {
                                 Text("Paste").font(.system(size: 14, weight: .bold)).foregroundStyle(.white).padding(.horizontal, 28).padding(.vertical, 14).contentShape(Rectangle())
@@ -158,7 +158,12 @@ struct ContentView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(controller.libraryItems.prefix(5)) { item in
-                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl, duration: item.duration, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                            RecentCardCompact(controller: controller, item: item, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                                .contextMenu {
+                                    Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise") }
+                                    Divider()
+                                    Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash") }
+                                }
                         }
                     }
                 }
@@ -184,8 +189,12 @@ struct ContentView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
                     ForEach(controller.libraryItems) { item in
-                        VideoCard(item: item) { playingItem = item }
-                            .contextMenu { Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash") } }
+                        VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                            .contextMenu {
+                                Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise") }
+                                Divider()
+                                Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash") } 
+                            }
                     }
                 }
                 .padding(.horizontal, 40).padding(.bottom, 40)
@@ -282,7 +291,9 @@ struct SidebarIconButton: View {
 
 struct VideoCard: View {
     let item: MediaLibraryItem
+    var controller: ServerController
     let onPlay: () -> Void
+    let onDelete: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: onPlay) {
@@ -290,7 +301,7 @@ struct VideoCard: View {
                     if let thumb = item.thumbnailUrl, !thumb.isEmpty {
                         AsyncImage(url: URL(string: thumb)) { phase in
                             if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
-                            else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 24)) } }
+                            else { Color.black.overlay { ProgressView().scaleEffect(0.5) } }
                         }
                     } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 32)) } }
                     
@@ -302,10 +313,17 @@ struct VideoCard: View {
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .padding(8)
                     }
+                    
+                    if controller.refreshingIDs.contains(item.id) {
+                        ZStack {
+                            Color.black.opacity(0.4)
+                            ProgressView().controlSize(.small).tint(.white).scaleEffect(0.8)
+                        }
+                    }
                 }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: .black.opacity(0.1), radius: 8, y: 4)
             }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
-                Text(item.fileName).font(.system(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2)
+                Text(item.title).font(.system(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2)
             }.padding(.horizontal, 4)
         }
     }
@@ -318,25 +336,45 @@ struct VideoCard: View {
 }
 
 struct RecentCardCompact: View {
-    let title: String; let thumbnailUrl: String?; let duration: Int; let onPlay: () -> Void; let onDelete: () -> Void
+    var controller: ServerController
+    let item: MediaLibraryItem
+    let onPlay: () -> Void
+    let onDelete: () -> Void
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onPlay) {
                 ZStack(alignment: .bottomTrailing) {
-                    if let thumb = thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } }
-                    else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) }
+                    if let thumb = item.thumbnailUrl, !thumb.isEmpty {
+                        AsyncImage(url: URL(string: thumb)) { phase in
+                            if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
+                            else { Color.gray.opacity(0.1) }
+                        }
+                    } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) }
                     
-                    if duration > 0 {
-                        Text(formatDuration(duration))
+                    if item.duration > 0 {
+                        Text(formatDuration(item.duration))
                             .font(.system(size: 8, weight: .bold))
                             .padding(.horizontal, 4).padding(.vertical, 2)
                             .background(.black.opacity(0.75)).foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                             .padding(4)
                     }
+                    
+                    if controller.refreshingIDs.contains(item.id) {
+                        ZStack {
+                            Color.black.opacity(0.4)
+                            ProgressView().controlSize(.small).tint(.white).scaleEffect(0.6)
+                        }
+                    }
                 }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8))
             }.buttonStyle(.plain)
-            Button(action: onPlay) { Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
+            Button(action: onPlay) {
+                Text(item.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }.buttonStyle(.plain)
             Button { onDelete() } label: { Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.7)).padding(6) }.buttonStyle(.plain)
         }.padding(.vertical, 4)
     }
