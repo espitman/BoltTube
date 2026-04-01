@@ -23,7 +23,6 @@ class MediaRepository:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
-            # Main Media Items Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS media_items (
                     id TEXT PRIMARY KEY,
@@ -38,7 +37,6 @@ class MediaRepository:
                     title TEXT
                 )
             """)
-            # Playlists Table
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,12 +45,9 @@ class MediaRepository:
                     created_at TEXT
                 )
             """)
-            # Migration for older playlists table
-            try:
-                conn.execute("ALTER TABLE playlists ADD COLUMN thumbnail_url TEXT")
+            try: conn.execute("ALTER TABLE playlists ADD COLUMN thumbnail_url TEXT")
             except sqlite3.OperationalError: pass
 
-            # Junction Table for Playlist items
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlist_items (
                     playlist_id INTEGER,
@@ -64,8 +59,7 @@ class MediaRepository:
                     PRIMARY KEY(playlist_id, media_id)
                 )
             """)
-            try:
-                conn.execute("ALTER TABLE playlist_items ADD COLUMN sort_order INTEGER DEFAULT 0")
+            try: conn.execute("ALTER TABLE playlist_items ADD COLUMN sort_order INTEGER DEFAULT 0")
             except sqlite3.OperationalError: pass
 
     def save_item(self, item: MediaItem):
@@ -92,7 +86,6 @@ class MediaRepository:
             rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]
 
-    # --- Playlist Methods ---
     def create_playlist(self, name: str, thumbnail_url: Optional[str] = None) -> int:
         from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:
@@ -102,14 +95,19 @@ class MediaRepository:
     def get_playlists(self) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM playlists ORDER BY created_at DESC").fetchall()
+            rows = conn.execute("""
+                SELECT p.*, COUNT(pi.media_id) as item_count 
+                FROM playlists p 
+                LEFT JOIN playlist_items pi ON p.id = pi.playlist_id 
+                GROUP BY p.id 
+                ORDER BY p.created_at DESC
+            """).fetchall()
             return [dict(r) for r in rows]
 
     def add_to_playlist(self, playlist_id: int, media_id: str):
         from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("INSERT OR IGNORE INTO playlist_items (playlist_id, media_id, added_at) VALUES (?, ?, ?)", (playlist_id, media_id, datetime.now().isoformat()))
-            # Update thumbnail if it's currently null
             conn.execute("""
                 UPDATE playlists 
                 SET thumbnail_url = (SELECT thumbnail_url FROM media_items WHERE id = ?) 
