@@ -232,42 +232,66 @@ struct ContentView: View {
 
     private func channelDetailView(channel: Channel) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Button { controller.selectedChannel = nil; controller.channelContent = [] } label: { Image(systemName: "arrow.left").font(.vazir(size: 16, weight: .bold)).foregroundStyle(slate900).padding(10).background(Color.white).clipShape(Circle()).shadow(color: Color.black.opacity(0.05), radius: 5) }.buttonStyle(.plain)
-                Text(channel.name).font(.vazir(size: 24, weight: .bold)).foregroundStyle(slate900)
-                Spacer()
-            }.padding(.horizontal, 40).padding(.bottom, 32)
-            
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 48) {
-                    if controller.isFetchingChannelContent { ProgressView().padding(.top, 100) }
-                    else if controller.channelContent.isEmpty { Text("No content in this channel").font(.vazir(size: 16)).foregroundStyle(slate600.opacity(0.4)).padding(.top, 100) }
-                    else {
-                        ForEach(controller.channelContent) { section in
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack {
-                                    Text(section.playlist.name).font(.vazir(size: 18, weight: .bold)).foregroundStyle(slate900)
-                                    Spacer()
-                                    Button { 
-                                        controller.selectedPlaylist = section.playlist
-                                        controller.selectedChannel = nil
-                                        controller.activeManagementTab = 1 // Switch to Playlists tab to show detail correctly
-                                        Task { await controller.fetchPlaylistItems(id: section.playlist.id) }
-                                    } label: { Text("See All").font(.vazir(size: 13, weight: .bold)).foregroundStyle(accentBlue) }.buttonStyle(.plain)
-                                }.padding(.horizontal, 40)
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 24) {
-                                        ForEach(section.items) { item in
-                                            VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
-                                                .frame(width: 240)
+                VStack(spacing: 0) {
+                    // Compact Header Banner (Inline Title)
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(colors: [accentBlue.opacity(0.8), accentBlue], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .frame(height: 140)
+                            .overlay { 
+                                if let thumb = channel.thumbnailUrl, !thumb.isEmpty {
+                                    AsyncImage(url: URL(string: thumb)) { phase in 
+                                        if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
+                                    }.opacity(0.2).blendMode(.overlay)
+                                }
+                            }
+                        
+                        HStack(spacing: 20) {
+                            Button { controller.selectedChannel = nil; controller.channelContent = [] } label: { 
+                                Image(systemName: "arrow.left").font(.vazir(size: 16, weight: .bold)).foregroundStyle(Color.white).padding(12).background(Color.black.opacity(0.3)).clipShape(Circle()) 
+                            }.buttonStyle(.plain)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("CHANNEL").font(.vazir(size: 10, weight: .black)).foregroundStyle(Color.white.opacity(0.6)).kerning(1)
+                                Text(channel.name).font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
+                            }
+                            Spacer()
+                        }.padding(28).padding(.bottom, 4)
+                    }.frame(maxWidth: .infinity).clipped()
+
+                    VStack(spacing: 48) {
+                        if controller.isFetchingChannelContent { ProgressView().padding(.top, 100) }
+                        else if controller.channelContent.isEmpty { Text("No content in this channel").font(.vazir(size: 16)).foregroundStyle(slate600.opacity(0.4)).padding(.top, 100) }
+                        else {
+                            ForEach(controller.channelContent) { section in
+                                VStack(alignment: .leading, spacing: 18) {
+                                    HStack(alignment: .bottom) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(section.playlist.name).font(.vazir(size: 20, weight: .bold)).foregroundStyle(slate900)
+                                            Rectangle().fill(accentBlue).frame(width: 32, height: 3).contentShape(Rectangle())
                                         }
+                                        Spacer()
+                                        Button { 
+                                            controller.selectedPlaylist = section.playlist
+                                            controller.selectedChannel = nil
+                                            controller.activeManagementTab = 1
+                                            Task { await controller.fetchPlaylistItems(id: section.playlist.id) }
+                                        } label: { Text("See All").font(.vazir(size: 12, weight: .bold)).foregroundStyle(accentBlue).padding(.horizontal, 14).padding(.vertical, 7).background(accentBlue.opacity(0.1)).clipShape(Capsule()) }.buttonStyle(.plain)
                                     }.padding(.horizontal, 40)
+                                    
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 24) {
+                                            ForEach(section.items) { item in
+                                                VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                                                    .frame(width: 240)
+                                            }
+                                        }.padding(.horizontal, 40)
+                                    }
                                 }
                             }
                         }
-                    }
-                }.padding(.bottom, 40)
+                    }.padding(.vertical, 40)
+                }
             }
         }
     }
