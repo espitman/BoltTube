@@ -51,9 +51,9 @@ struct ContentView: View {
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
         .sheet(isPresented: $showCreatePlaylist) { dialogModal(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); showCreatePlaylist = false; newPlaylistName = "" } }, onCancel: { showCreatePlaylist = false; newPlaylistName = "" }) }
-        .sheet(isPresented: $showEditPlaylist) { if let p = playlistToEdit { dialogModal(title: "Rename Playlist", text: $editPlaylistName, onConfirm: { Task { await controller.updatePlaylist(id: p.id, name: editPlaylistName); showEditPlaylist = false; playlistToEdit = nil } }, onCancel: { showEditPlaylist = false; playlistToEdit = nil }) } }
+        .sheet(item: $playlistToEdit) { p in dialogModal(title: "Rename Playlist", text: $editPlaylistName, onConfirm: { Task { await controller.updatePlaylist(id: p.id, name: editPlaylistName); playlistToEdit = nil } }, onCancel: { playlistToEdit = nil }) }
         .sheet(isPresented: $showCreateChannel) { dialogModal(title: "New Channel", text: $newChannelName, onConfirm: { Task { await controller.createChannel(name: newChannelName); showCreateChannel = false; newChannelName = "" } }, onCancel: { showCreateChannel = false; newChannelName = "" }) }
-        .sheet(isPresented: $showEditChannel) { if let c = channelToEdit { dialogModal(title: "Rename Channel", text: $editChannelName, onConfirm: { Task { await controller.updateChannel(id: c.id, name: editChannelName); showEditChannel = false; channelToEdit = nil } }, onCancel: { showEditChannel = false; channelToEdit = nil }) } }
+        .sheet(item: $channelToEdit) { c in dialogModal(title: "Rename Channel", text: $editChannelName, onConfirm: { Task { await controller.updateChannel(id: c.id, name: editChannelName); channelToEdit = nil } }, onCancel: { channelToEdit = nil }) }
         .animation(.spring(duration: 0.4, bounce: 0.1), value: currentTab)
         .animation(.spring(duration: 0.4, bounce: 0.1), value: controller.activeManagementTab)
         .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
@@ -177,7 +177,7 @@ struct ContentView: View {
                         PlaylistCard(playlist: playlist)
                             .onTapGesture { controller.selectedPlaylist = playlist; Task { await controller.fetchPlaylistItems(id: playlist.id) } }
                             .contextMenu {
-                                Button { editPlaylistName = playlist.name; playlistToEdit = playlist; showEditPlaylist = true } label: { Label("Rename", systemImage: "pencil") }
+                                Button { editPlaylistName = playlist.name; playlistToEdit = playlist } label: { Label("Rename", systemImage: "pencil") }
                                 Button { playlistToAddToChannel = playlist } label: { Label("Add to Channel", systemImage: "plus.square.on.square") }
                                 Divider(); Button(role: .destructive) { playlistToDelete = playlist } label: { Label("Delete", systemImage: "trash") }
                             }
@@ -197,7 +197,7 @@ struct ContentView: View {
                         PlaylistCard(playlist: Playlist(id: channel.id, name: channel.name, thumbnailUrl: channel.thumbnailUrl, createdAt: channel.createdAt, itemCount: channel.playlistCount)) // Reusing visual
                             .onTapGesture { /* Placeholder: controller.selectedChannel = channel */ }
                             .contextMenu {
-                                Button { editChannelName = channel.name; channelToEdit = channel; showEditChannel = true } label: { Label("Rename", systemImage: "pencil") }
+                                Button { editChannelName = channel.name; channelToEdit = channel } label: { Label("Rename", systemImage: "pencil") }
                                 Divider(); Button(role: .destructive) { channelToDelete = channel } label: { Label("Delete", systemImage: "trash") }
                             }
                     }

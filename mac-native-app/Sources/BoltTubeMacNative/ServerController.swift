@@ -101,7 +101,13 @@ final class ServerController {
     func updateChannel(id: Int, name: String) async {
         guard let url = URL(string: "\(serverURLDisplay)/api/channels/update") else { return }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body: [String: Any] = ["id": id, "name": name]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Update channel failed.") }
+        do { 
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let r = response as? HTTPURLResponse { appendLog("Update channel response: \(r.statusCode)") }
+            await refreshChannels() 
+        } catch { 
+            appendLog("Update channel failed: \(error.localizedDescription)") 
+        }
     }
 
     func addPlaylistToChannel(channelID: Int, playlistID: Int) async {

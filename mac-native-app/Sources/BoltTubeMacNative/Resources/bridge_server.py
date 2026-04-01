@@ -124,8 +124,11 @@ def delete_channel():
 def update_channel():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
-    library.repo.update_channel(int(data["id"]), data["name"])
-    return jsonify({"status": "ok"})
+    try:
+        library.repo.update_channel(int(data["id"]), data["name"])
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
 
 @app.route("/media/<media_id>")
 def serve_video(media_id):
