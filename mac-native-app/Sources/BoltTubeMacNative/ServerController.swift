@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import IOKit.pwr_mgt
 
 #if SWIFT_PACKAGE
 private let appResourceBundle = Bundle.module
@@ -110,6 +111,7 @@ final class ServerController {
     private var shareServerProcess: Process?
     private var shareServerOutputPipe: Pipe?
     private var qualityRefreshTask: Task<Void, Never>?
+    private var sleepAssertionID: IOPMAssertionID = 0
     private var activeDownloadProcess: Process?
     private var activeDownloadTempName: String = ""
     private var lastProgressBytes: Double = 0
@@ -362,6 +364,15 @@ final class ServerController {
             shareServerProcess = process
             shareServerOutputPipe = outputPipe
             isShareServerRunning = true
+            
+            // Prevent Sleep
+            _ = IOPMAssertionCreateWithDescription(
+                kIOPMAssertionTypeNoIdleSleep as CFString,
+                "BoltTube Bridge Server Running" as CFString,
+                nil, nil, nil, 0, nil,
+                &sleepAssertionID
+            )
+            
             try await Task.sleep(for: .seconds(1))
             await checkHealth()
         } catch {
@@ -378,6 +389,13 @@ final class ServerController {
         shareServerProcess = nil
         shareServerOutputPipe = nil
         isShareServerRunning = false
+        
+        // Allow Sleep again
+        if sleepAssertionID != 0 {
+            IOPMAssertionRelease(sleepAssertionID)
+            sleepAssertionID = 0
+        }
+        
         appendLog("Share server stop requested.")
     }
 
