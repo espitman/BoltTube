@@ -4,7 +4,6 @@ This repository contains:
 
 - `android-phone-app`: the Android client
 - `mac-native-app`: the native macOS app
-- `mac-server`: the older Kotlin-based mac bridge/server
 
 ## Android Local AAR Files
 
