@@ -67,7 +67,7 @@ struct ContentView: View {
         .animation(.spring(duration: 0.4, bounce: 0.1), value: controller.activeManagementTab)
         .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
         .onChange(of: playingItem) { _, v in if let i = v { player = AVPlayer(url: controller.localURL(for: i)); player?.play() } else { player?.pause(); player = nil } }
-        .frame(minWidth: 1080, minHeight: 480).background(Color(red: 0.98, green: 0.98, blue: 1.0)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).ignoresSafeArea()
+        .frame(minWidth: 1080, minHeight: 746).background(Color(red: 0.98, green: 0.98, blue: 1.0)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).ignoresSafeArea()
         .task { await controller.refreshLibrary(); await controller.refreshPlaylists(); await controller.refreshChannels() }
         .onChange(of: controller.videoURL) { _, _ in controller.scheduleQualityRefresh() }
         .alert("Confirm Action", isPresented: Binding(get: { itemToDelete != nil || playlistToDelete != nil || channelToDelete != nil }, set: { if !$0 { itemToDelete = nil; playlistToDelete = nil; channelToDelete = nil } })) {
@@ -217,15 +217,37 @@ struct ContentView: View {
 
     private func playlistDetailView(playlist: Playlist) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Button { controller.selectedPlaylist = nil; controller.playlistItems = [] } label: { Image(systemName: "arrow.left").font(.vazir(size: 16, weight: .bold)).foregroundStyle(slate900).padding(10).background(Color.white).clipShape(Circle()).shadow(color: Color.black.opacity(0.05), radius: 5) }.buttonStyle(.plain)
-                Text(playlist.name).font(.vazir(size: 18, weight: .bold)).foregroundStyle(slate900)
-                Spacer()
-            }.padding(.horizontal, 40).padding(.bottom, 24)
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
-                    ForEach(controller.playlistItems) { item in VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item }) }
-                }.padding(.horizontal, 40).padding(.bottom, 40)
+                VStack(spacing: 0) {
+                    // Compact Header Banner (Inline)
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(colors: [accentRed.opacity(0.8), accentRed], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .frame(height: 140)
+                            .overlay { 
+                                if let thumb = playlist.thumbnailUrl, !thumb.isEmpty {
+                                    AsyncImage(url: URL(string: thumb)) { phase in 
+                                        if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
+                                    }.opacity(0.2).blendMode(.overlay)
+                                }
+                            }
+                        
+                        HStack(spacing: 20) {
+                            Button { controller.selectedPlaylist = nil; controller.playlistItems = [] } label: { 
+                                Image(systemName: "arrow.left").font(.vazir(size: 16, weight: .bold)).foregroundStyle(Color.white).padding(12).background(Color.black.opacity(0.3)).clipShape(Circle()) 
+                            }.buttonStyle(.plain)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("PLAYLIST").font(.vazir(size: 10, weight: .black)).foregroundStyle(Color.white.opacity(0.6)).kerning(1)
+                                Text(playlist.name).font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
+                            }
+                            Spacer()
+                        }.padding(28).padding(.bottom, 4)
+                    }.frame(maxWidth: .infinity).clipped()
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
+                        ForEach(controller.playlistItems) { item in VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item }) }
+                    }.padding(.horizontal, 40).padding(.vertical, 40)
+                }
             }
         }
     }
