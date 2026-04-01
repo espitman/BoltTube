@@ -125,35 +125,55 @@ class BridgeService:
         streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
         formats = []
         seen_res = set()
+        best_audio = yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
+        audio_size = (best_audio.filesize or best_audio.filesize_approx or 0) if best_audio else 0
         for s in streams:
             if not s.resolution or s.resolution in seen_res: continue
             seen_res.add(s.resolution)
-            formats.append({"id": str(s.itag), "title": s.resolution, "details": "AVC1", "filesize": readable_size(s.filesize or s.filesize_approx or 0)})
+            video_size = s.filesize or s.filesize_approx or 0
+            total_size = video_size if s.is_progressive else video_size + audio_size
+            details = "single file" if s.is_progressive else "video+audio merge"
+            formats.append({"id": str(s.itag), "title": s.resolution, "details": details, "filesize": readable_size(total_size)})
         return {"title": yt.title, "thumbnailUrl": thumb, "durationSeconds": int(getattr(yt, "length", 0)), "formats": formats}
 
     def download_with_progress(self, url: str, format_id: str) -> Dict[str, Any]:
-        def on_p(stream, chunk, remaining):
-            total = stream.filesize
-            down = total - remaining
-            print(json.dumps({"event": "progress", "downloadedBytes": down, "totalBytes": total, "fraction": down/total if total>0 else 0}), file=sys.stderr, flush=True)
-        
-        yt = YouTube(url, on_progress_callback=on_p)
+        yt = YouTube(url)
         thumb = self._stable_t(url, yt)
         stream = yt.streams.get_by_itag(int(format_id))
         if not stream: raise ValueError("Format not found")
+        audio = None if stream.is_progressive else yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
+        if not stream.is_progressive and audio is None:
+            raise ValueError("No compatible audio stream found")
+
+        video_total = int(stream.filesize or stream.filesize_approx or 0)
+        audio_total = int(audio.filesize or audio.filesize_approx or 0) if audio is not None else 0
+        total_bytes = video_total + audio_total
+        per_stream_downloaded: Dict[int, int] = {}
+
+        def on_p(progress_stream, _chunk, remaining):
+            stream_total = int(progress_stream.filesize or progress_stream.filesize_approx or 0)
+            downloaded = max(stream_total - remaining, 0)
+            if progress_stream.itag is not None:
+                per_stream_downloaded[int(progress_stream.itag)] = downloaded
+            total_downloaded = sum(per_stream_downloaded.values())
+            print(json.dumps({
+                "event": "progress",
+                "downloadedBytes": total_downloaded,
+                "totalBytes": total_bytes,
+                "fraction": (total_downloaded / total_bytes) if total_bytes > 0 else 0,
+            }), file=sys.stderr, flush=True)
+
+        yt.register_on_progress_callback(on_p)
         
         t_name = f"{sanitize_filename(yt.title or 'video')}-{uuid.uuid4().hex[:8]}"
-        print(json.dumps({"event": "starting", "title": yt.title, "tempName": t_name}), file=sys.stderr, flush=True)
+        print(json.dumps({"event": "starting", "title": yt.title, "tempName": t_name, "totalBytes": total_bytes}), file=sys.stderr, flush=True)
         
         target_dir = self.library.download_dir
         if stream.is_progressive:
             f_path = Path(stream.download(output_path=str(target_dir), filename=f"{t_name}.mp4"))
         else:
             ffmpeg = shutil.which("ffmpeg") or "/usr/local/bin/ffmpeg" or "/opt/homebrew/bin/ffmpeg"
-            audio = yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
             if os.path.exists(ffmpeg):
-                if audio is None:
-                    raise ValueError("No compatible audio stream found")
                 v_p = Path(stream.download(output_path=str(target_dir), filename=f"{t_name}.video.{stream.subtype or 'mp4'}"))
                 a_p = Path(audio.download(output_path=str(target_dir), filename=f"{t_name}.audio.{audio.subtype or 'm4a'}"))
                 f_path = target_dir / f"{t_name}.mp4"
@@ -195,7 +215,7 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/health": self._send_json({"status": "ok"})
-        elif p == "/api/items": self._send_json(self.service.library.list_items() if hasattr(self.service.library, "list_items") else {"items": []})
+        elif p == "/api/items": self._send_json({"items": self.service.library.list_items()})
         elif p.startswith("/media/"):
             media_id = unquote(p.removeprefix("/media/"))
             item = self.service.library._items.get(media_id)

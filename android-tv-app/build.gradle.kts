@@ -10,12 +10,21 @@ android {
 
     defaultConfig {
         applicationId = "ir.boum.bolttube.tv"
-        minSdk = 24
+        minSdk = 21
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("release.jks")
+            storePassword = "bolttube123"
+            keyAlias = "bolttube"
+            keyPassword = "bolttube123"
+        }
     }
 
     buildTypes {
@@ -25,6 +34,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

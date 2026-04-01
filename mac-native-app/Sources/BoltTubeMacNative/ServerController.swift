@@ -707,7 +707,7 @@ final class ServerController {
                 downloadProgressText = "\(Int(downloadProgress * 100))%\(speedText)"
             }
         case "merging":
-            downloadProgress = 1
+            downloadProgress = max(downloadProgress, 0.98)
             downloadProgressText = "Merging video and audio..."
         default:
             appendLog(line)
