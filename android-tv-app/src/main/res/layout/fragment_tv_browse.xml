@@ -36,7 +36,8 @@
             android:id="@+id/channelHero"
             android:layout_width="match_parent"
             android:layout_height="112dp"
-            android:background="@color/tv_focus">
+            android:background="@color/tv_focus"
+            android:elevation="24dp">
 
             <ImageView
                 android:id="@+id/channelHeroImage"
