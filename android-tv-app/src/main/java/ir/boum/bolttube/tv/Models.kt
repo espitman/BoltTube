@@ -79,6 +79,7 @@ data class VideoItem(
     val thumbnailUrl: String?,
     val streamUrl: String,
     val createdAt: String,
+    val duration: Int,
 ) : TvRowItem
 
 @Serializable

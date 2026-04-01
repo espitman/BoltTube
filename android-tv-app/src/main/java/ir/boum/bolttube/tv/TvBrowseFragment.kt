@@ -265,6 +265,7 @@ class TvBrowseFragment : Fragment() {
             thumbnailUrl = item.thumbnailUrl?.let(viewModel::absoluteMediaUrl),
             streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
             createdAt = item.createdAt,
+            duration = item.duration,
         )
     }
 
@@ -400,7 +401,13 @@ private class TvVideoCardAdapter(
             titleView.text = item.title
             titleView.isSelected = itemView.isFocused
             dateView.text = formatCreatedDate(item.createdAt)
-            badgeView.visibility = View.GONE // Hide duration badge for now as we don't have it
+            
+            if (item.duration > 0) {
+                badgeView.text = formatDuration(item.duration.toLong())
+                badgeView.visibility = View.VISIBLE
+            } else {
+                badgeView.visibility = View.GONE
+            }
 
             if (isPersian(item.title)) {
                 try {
@@ -497,6 +504,14 @@ private class TvVideoCardAdapter(
                 if (char in '\u0600'..'\u06FF') return true
             }
             return false
+        }
+
+        private fun formatDuration(totalSeconds: Long): String {
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            return if (hours > 0) String.format("%d:%02d:%02d", hours, minutes, seconds)
+            else String.format("%02d:%02d", minutes, seconds)
         }
 
     }
