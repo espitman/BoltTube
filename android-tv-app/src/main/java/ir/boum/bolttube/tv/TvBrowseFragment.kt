@@ -103,25 +103,25 @@ class TvBrowseFragment : Fragment() {
     }
 
     private fun ensureSectionVisible(sectionView: View, focusedCardView: View) {
-        val sectionRect = Rect()
-        channelScrollView.offsetDescendantRectToMyCoords(sectionView, sectionRect)
-
-        val cardRect = Rect()
-        channelScrollView.offsetDescendantRectToMyCoords(focusedCardView, cardRect)
-
-        val topInset = dpToPx(12)
-        val bottomInset = dpToPx(40)
-        val topSafe = topInset
-        val bottomSafe = channelScrollView.height - channelScrollView.paddingBottom - bottomInset
-        val desiredTop = minOf(sectionRect.top, cardRect.top) - topInset
-        val desiredBottom = maxOf(sectionRect.bottom, cardRect.bottom) + bottomInset
-
-        val dy = when {
-            desiredTop < topSafe -> desiredTop - topSafe
-            desiredBottom > bottomSafe -> desiredBottom - bottomSafe
-            else -> 0
+        val sectionTop = IntArray(2).also { sectionView.getLocationInWindow(it) }[1]
+        val scrollTop = IntArray(2).also { channelScrollView.getLocationInWindow(it) }[1]
+        
+        val relativeTop = sectionTop - scrollTop
+        val topSafe = dpToPx(12)
+        
+        if (relativeTop < topSafe) {
+            channelScrollView.smoothScrollBy(0, relativeTop - topSafe)
+        } else {
+            val cardBottom = IntArray(2).also { focusedCardView.getLocationInWindow(it) }[1] + focusedCardView.height
+            val scrollBottom = scrollTop + channelScrollView.height
+            val bottomSafe = dpToPx(48)
+            
+            if (cardBottom > scrollBottom - bottomSafe) {
+                val dy = cardBottom - (scrollBottom - bottomSafe)
+                val canScrollDown = relativeTop - topSafe
+                channelScrollView.smoothScrollBy(0, minOf(dy, canScrollDown))
+            }
         }
-        if (dy != 0) channelScrollView.smoothScrollBy(0, dy)
     }
 
     private fun dpToPx(value: Int): Int {
