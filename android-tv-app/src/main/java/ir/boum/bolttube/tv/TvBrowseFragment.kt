@@ -90,7 +90,7 @@ class TvBrowseFragment : Fragment() {
         }
 
         playlistGrid = view.findViewById<RecyclerView>(R.id.playlistGrid).apply {
-            layoutManager = GridLayoutManager(requireContext(), 4)
+            layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = playlistAdapter
             itemAnimator = null
         }
