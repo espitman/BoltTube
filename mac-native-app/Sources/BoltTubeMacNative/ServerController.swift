@@ -66,13 +66,30 @@ final class ServerController {
 
     func refreshChannels() async {
         guard let url = URL(string: "\(serverURLDisplay)/api/channels") else { return }
-        do { let (data, response) = try await URLSession.shared.data(from: url); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(ChannelResponse.self, from: data); channels = decoded.items } catch { appendLog("Channels refresh failed.") }
+        do { 
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let decoded = try decoder.decode(ChannelResponse.self, from: data)
+            channels = decoded.items
+            appendLog("Channels refreshed: \(channels.count) items.")
+        } catch { 
+            appendLog("Channels refresh failed: \(error.localizedDescription)")
+            print("Decoding Error: \(error)")
+        }
     }
 
     func createChannel(name: String) async {
         guard let url = URL(string: "\(serverURLDisplay)/api/channels/create") else { return }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body = ["name": name]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Create channel failed.") }
+        do { 
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let r = response as? HTTPURLResponse { appendLog("Create channel response: \(r.statusCode)") }
+            await refreshChannels() 
+        } catch { 
+            appendLog("Create channel failed: \(error.localizedDescription)") 
+        }
     }
 
     func deleteChannel(id: Int) async {
