@@ -16,15 +16,15 @@ private func bundledResourceURL(named name: String, withExtension ext: String) -
 }
 
 struct MediaLibraryItem: Codable, Identifiable, Hashable {
-    let id: String; let fileName: String; let streamUrl: String; let size: String; let createdAt: String; let thumbnailUrl: String?; let duration: Int; let sourceUrl: String; let title: String
+    let id: String; let fileName: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?
 }
 
 struct Playlist: Codable, Identifiable, Hashable {
-    let id: Int; let name: String; let thumbnailUrl: String?; let createdAt: String; let itemCount: Int
+    let id: Int; let name: String?; let thumbnailUrl: String?; let createdAt: String?; let itemCount: Int
 }
 
 struct Channel: Codable, Identifiable, Hashable {
-    let id: Int; let name: String; let thumbnailUrl: String?; let createdAt: String; let playlistCount: Int
+    let id: Int; let name: String?; let thumbnailUrl: String?; let createdAt: String?; let playlistCount: Int
 }
 struct ChannelResponse: Codable { let items: [Channel] }
 struct PlaylistResponse: Codable { let items: [Playlist] }
@@ -128,6 +128,7 @@ final class ServerController {
             channelContent = decoded.content
             appendLog("Channel content loaded: \(channelContent.count) playlists.")
         } catch { 
+            print("Fetch channel content Decoding Error: \(error)")
             appendLog("Fetch channel content failed: \(error.localizedDescription)") 
         }
         isFetchingChannelContent = false
@@ -179,9 +180,9 @@ final class ServerController {
         do { appendLog("Refreshing metadata for \(id)..."); let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; appendLog("Metadata refreshed."); await refreshLibrary() } catch { appendLog("Refresh failed.") }
     }
 
-    func localURL(for item: MediaLibraryItem) -> URL { return URL(string: "\(lanURLDisplay)\(item.streamUrl)")! }
+    func localURL(for item: MediaLibraryItem) -> URL { return URL(string: "\(lanURLDisplay)\(item.streamUrl ?? "")")! }
     func refreshLibrary() async {
-        do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "list", "--download-dir", downloadDirectory.path], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(MediaLibraryResponse.self, from: data); libraryItems = decoded.items } catch { appendLog("Library refresh failed.") }
+        do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "list", "--download-dir", downloadDirectory.path], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(MediaLibraryResponse.self, from: data); libraryItems = decoded.items } catch { print("Library Refresh Error: \(error)"); appendLog("Library refresh failed.") }
     }
 
     func refreshPlaylists() async {
@@ -192,7 +193,7 @@ final class ServerController {
     func fetchPlaylistItems(id: Int) async {
         guard let url = URL(string: "\(serverURLDisplay)/api/playlists/\(id)/items") else { return }
         isFetchingPlaylistItems = true; defer { isFetchingPlaylistItems = false }
-        do { let (data, response) = try await URLSession.shared.data(from: url); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(MediaLibraryResponse.self, from: data); playlistItems = decoded.items } catch { appendLog("Fetch playlist items failed.") }
+        do { let (data, response) = try await URLSession.shared.data(from: url); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(MediaLibraryResponse.self, from: data); playlistItems = decoded.items } catch { print("Playlist Items Decoding Error: \(error)"); appendLog("Fetch playlist items failed.") }
     }
 
     func createPlaylist(name: String) async {

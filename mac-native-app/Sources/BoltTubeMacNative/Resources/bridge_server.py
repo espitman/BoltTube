@@ -184,14 +184,15 @@ def get_playlist_items(p_id):
     if not library: return jsonify({"items": []})
     raw_items = library.repo.get_playlist_items(p_id)
     items = [{
-        "id": item["id"],
-        "fileName": item["file_name"],
-        "streamUrl": item["stream_url"],
-        "size": item["size"],
-        "createdAt": item["created_at"],
-        "thumbnailUrl": item.get("thumbnail_url"),
+        "id": str(item["id"]),
+        "file_name": str(item.get("file_name") or ""),
+        "stream_url": str(item.get("stream_url") or ""),
+        "size": str(item.get("size") or ""),
+        "created_at": str(item.get("created_at") or ""),
+        "thumbnail_url": item.get("thumbnail_url"),
         "duration": item.get("duration", 0),
-        "title": item.get("title") or item["file_name"].replace(".mp4", ""),
+        "source_url": str(item.get("source_url") or ""),
+        "title": str(item.get("title") or item["file_name"].replace(".mp4", "")),
     } for item in raw_items]
     return jsonify({"items": items})
 
@@ -203,14 +204,15 @@ def get_channel_content(channel_id):
     for p in playlists:
         raw_items = library.repo.get_playlist_items(p["id"])[:10]
         items = [{
-            "id": item["id"],
-            "fileName": item["file_name"],
-            "title": item.get("title") or item["file_name"].replace(".mp4", ""),
-            "streamUrl": item["stream_url"],
-            "size": item["size"],
-            "createdAt": item["created_at"],
-            "thumbnailUrl": item.get("thumbnail_url"),
+            "id": str(item["id"]),
+            "file_name": str(item.get("file_name") or ""),
+            "title": str(item.get("title") or item["file_name"].replace(".mp4", "")),
+            "stream_url": str(item.get("stream_url") or ""),
+            "size": str(item.get("size") or ""),
+            "created_at": str(item.get("created_at") or ""),
+            "thumbnail_url": item.get("thumbnail_url"),
             "duration": item.get("duration", 0),
+            "source_url": str(item.get("source_url") or ""),
         } for item in raw_items]
         content.append({
             "playlist": {

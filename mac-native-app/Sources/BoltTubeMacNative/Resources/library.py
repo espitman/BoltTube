@@ -48,14 +48,14 @@ class MediaLibrary:
                     final_title = r.get("file_name", "").replace(".mp4", "")
                 
                 result.append({
-                    "id": r["id"],
-                    "fileName": r["file_name"],
-                    "title": final_title,
-                    "streamUrl": r["stream_url"],
-                    "size": r["size"],
-                    "createdAt": r["created_at"],
-                    "thumbnailUrl": r["thumbnail_url"],
-                    "sourceUrl": r.get("source_url", ""),
+                    "id": str(r["id"]),
+                    "file_name": str(r.get("file_name") or ""),
+                    "title": str(final_title or ""),
+                    "stream_url": str(r.get("stream_url") or ""),
+                    "size": str(r.get("size") or ""),
+                    "created_at": str(r.get("created_at") or ""),
+                    "thumbnail_url": r.get("thumbnail_url"),
+                    "source_url": str(r.get("source_url") or ""),
                     "duration": duration
                 })
             return result

@@ -137,7 +137,7 @@ struct ContentView: View {
 
     private func libraryGrid(metrics: LayoutMetrics) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack { Text("Your Library").font(.vazir(size: 24, weight: .bold)).foregroundStyle(slate900); Spacer(); Text("\(controller.libraryItems.count) Videos").font(.vazir(size: 14, weight: .medium)).foregroundStyle(slate600) }.padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 32)
+                HStack { Text("Your Library").font(.vazir(size: 24, weight: .bold)).foregroundStyle(slate900); Spacer(); Text("\(controller.libraryItems.count) Videos").font(.vazir(size: 14, weight: .medium)).foregroundStyle(slate600) }.padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 32)
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
                     ForEach(controller.libraryItems) { item in
@@ -186,7 +186,7 @@ struct ContentView: View {
                         PlaylistCard(playlist: playlist)
                             .onTapGesture { controller.selectedPlaylist = playlist; Task { await controller.fetchPlaylistItems(id: playlist.id) } }
                             .contextMenu {
-                                Button { editPlaylistName = playlist.name; playlistToEdit = playlist } label: { Label("Rename", systemImage: "pencil").font(.vazir(size: 13)) }
+                                Button { editPlaylistName = playlist.name ?? ""; playlistToEdit = playlist } label: { Label("Rename", systemImage: "pencil").font(.vazir(size: 13)) }
                                 Button { playlistToAddToChannel = playlist } label: { Label("Add to Channel", systemImage: "plus.square.on.square").font(.vazir(size: 13)) }
                                 Divider(); Button(role: .destructive) { playlistToDelete = playlist } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) }
                             }
@@ -203,10 +203,10 @@ struct ContentView: View {
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 24)], spacing: 32) {
                     ForEach(controller.channels) { channel in
-                        PlaylistCard(playlist: Playlist(id: channel.id, name: channel.name, thumbnailUrl: channel.thumbnailUrl, createdAt: channel.createdAt, itemCount: channel.playlistCount)) // Reusing visual
+                        PlaylistCard(playlist: Playlist(id: channel.id, name: channel.name ?? "", thumbnailUrl: channel.thumbnailUrl, createdAt: channel.createdAt ?? "", itemCount: channel.playlistCount)) // Reusing visual
                             .onTapGesture { controller.selectedChannel = channel; Task { await controller.fetchChannelContent(id: channel.id) } }
                             .contextMenu {
-                                Button { editChannelName = channel.name; channelToEdit = channel } label: { Label("Rename", systemImage: "pencil").font(.vazir(size: 13)) }
+                                Button { editChannelName = channel.name ?? ""; channelToEdit = channel } label: { Label("Rename", systemImage: "pencil").font(.vazir(size: 13)) }
                                 Divider(); Button(role: .destructive) { channelToDelete = channel } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) }
                             }
                     }
@@ -238,7 +238,7 @@ struct ContentView: View {
                             
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("PLAYLIST").font(.vazir(size: 10, weight: .black)).foregroundStyle(Color.white.opacity(0.6)).kerning(1)
-                                Text(playlist.name).font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
+                                Text(playlist.name ?? "Untitled").font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
                             }
                             Spacer()
                         }.padding(28).padding(.bottom, 4)
@@ -275,7 +275,7 @@ struct ContentView: View {
                             
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("CHANNEL").font(.vazir(size: 10, weight: .black)).foregroundStyle(Color.white.opacity(0.6)).kerning(1)
-                                Text(channel.name).font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
+                                Text(channel.name ?? "Untitled").font(.vazir(size: 28, weight: .black)).foregroundStyle(Color.white)
                             }
                             Spacer()
                         }.padding(28).padding(.bottom, 4)
@@ -289,7 +289,7 @@ struct ContentView: View {
                                 VStack(alignment: .leading, spacing: 18) {
                                     HStack(alignment: .bottom) {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text(section.playlist.name).font(.vazir(size: 20, weight: .bold)).foregroundStyle(slate900)
+                                            Text(section.playlist.name ?? "Untitled").font(.vazir(size: 20, weight: .bold)).foregroundStyle(slate900)
                                             Rectangle().fill(accentBlue).frame(width: 32, height: 3).contentShape(Rectangle())
                                         }
                                         Spacer()
@@ -405,13 +405,13 @@ struct VideoCard: View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: onPlay) {
                 ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.black.overlay { ProgressView().scaleEffect(0.5) } } } } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(Color.white.opacity(0.2)).font(.system(size: 32)) } } }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
-                .overlay(alignment: .bottomTrailing) { if item.duration > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 6)).padding(8) } }
+                .overlay(alignment: .bottomTrailing) { if (item.duration ?? 0) > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 6)).padding(8) } }
                 .overlay { if controller.refreshingIDs.contains(item.id) { ZStack { Color.black.opacity(0.4); ProgressView().controlSize(.small).tint(Color.white).scaleEffect(0.8) }.clipShape(RoundedRectangle(cornerRadius: 12)) } }
             }.buttonStyle(.plain)
-            VStack(alignment: .leading, spacing: 4) { Text(item.title).font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2) }.padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 4) { Text(item.title ?? "Untitled").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2) }.padding(.horizontal, 4)
         }
     }
-    private func formatDuration(_ s: Int) -> String { String(format: "%d:%02d", s/60, s%60) }
+    private func formatDuration(_ s: Int?) -> String { let ss = s ?? 0; return String(format: "%d:%02d", ss/60, ss%60) }
 }
 
 struct PlaylistCard: View {
@@ -419,7 +419,7 @@ struct PlaylistCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ZStack { if let thumb = playlist.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1).overlay { Image(systemName: "music.note.list").foregroundStyle(Color.gray.opacity(0.3)).font(.system(size: 30)) } } } } else { Color.gray.opacity(0.1).overlay { Image(systemName: "music.note.list").foregroundStyle(Color.gray.opacity(0.3)).font(.system(size: 30)) } } }.frame(height: 120).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: Color.black.opacity(0.05), radius: 10, y: 5)
-            VStack(alignment: .leading, spacing: 2) { Text(playlist.name).font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(1); Text("\(playlist.itemCount) Videos").font(.vazir(size: 12, weight: .medium)).foregroundStyle(Color.gray.opacity(0.6)) }.padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 2) { Text(playlist.name ?? "Untitled").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(1); Text("\(playlist.itemCount) Videos").font(.vazir(size: 12, weight: .medium)).foregroundStyle(Color.gray.opacity(0.6)) }.padding(.horizontal, 4)
         }.contentShape(Rectangle())
     }
 }
@@ -428,12 +428,12 @@ struct RecentCardCompact: View {
     var controller: ServerController; let item: MediaLibraryItem; let onPlay: () -> Void; let onDelete: () -> Void
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onPlay) { ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) } }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(alignment: .bottomTrailing) { if item.duration > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 8, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 2).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 4)).padding(4) } } }.buttonStyle(.plain)
-            Button(action: onPlay) { Text(item.title).font(.vazir(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
+            Button(action: onPlay) { ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) } }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(alignment: .bottomTrailing) { if (item.duration ?? 0) > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 8, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 2).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 4)).padding(4) } } }.buttonStyle(.plain)
+            Button(action: onPlay) { Text(item.title ?? "Untitled").font(.vazir(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
             Button { onDelete() } label: { Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.7)).padding(6) }.buttonStyle(.plain)
         }.padding(.vertical, 4)
     }
-    private func formatDuration(_ s: Int) -> String { String(format: "%d:%02d", s/60, s%60) }
+    private func formatDuration(_ s: Int?) -> String { let ss = s ?? 0; return String(format: "%d:%02d", ss/60, ss%60) }
 }
 
 struct AddToPlaylistModal: View {
@@ -441,7 +441,7 @@ struct AddToPlaylistModal: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text("Add to Playlist").font(.vazir(size: 16, weight: .bold)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 14)).foregroundStyle(Color.gray) }.buttonStyle(.plain) }.padding(24); Divider()
-            ScrollView { VStack(spacing: 8) { if controller.playlists.isEmpty { Text("No playlists found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.playlists) { p in Button { Task { await controller.addToPlaylist(playlistID: p.id, mediaID: item.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = p.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(p.name).font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.circle").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
+            ScrollView { VStack(spacing: 8) { if controller.playlists.isEmpty { Text("No playlists found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.playlists) { p in Button { Task { await controller.addToPlaylist(playlistID: p.id, mediaID: item.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = p.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(p.name ?? "Untitled").font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.circle").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
         }.frame(width: 320, height: 400).background(Color.white)
     }
 }
@@ -451,7 +451,7 @@ struct AddToChannelModal: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack { Text("Add to Channel").font(.vazir(size: 16, weight: .bold)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 14)).foregroundStyle(Color.gray) }.buttonStyle(.plain) }.padding(24); Divider()
-            ScrollView { VStack(spacing: 8) { if controller.channels.isEmpty { Text("No channels found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.channels) { c in Button { Task { await controller.addPlaylistToChannel(channelID: c.id, playlistID: playlist.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = c.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(c.name).font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.square.fill").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
+            ScrollView { VStack(spacing: 8) { if controller.channels.isEmpty { Text("No channels found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.channels) { c in Button { Task { await controller.addPlaylistToChannel(channelID: c.id, playlistID: playlist.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = c.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(c.name ?? "Untitled").font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.square.fill").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
         }.frame(width: 320, height: 400).background(Color.white)
     }
 }
