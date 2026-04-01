@@ -80,6 +80,11 @@ data class VideoItem(
     val streamUrl: String,
 ) : TvRowItem
 
+@Serializable
+data class PlaylistItemsResponse(
+    val items: List<MediaSummary> = emptyList(),
+)
+
 data class TvUiState(
     val serverUrl: String = DEFAULT_SERVER_URL,
     val library: List<MediaSummary> = emptyList(),
@@ -87,6 +92,9 @@ data class TvUiState(
     val selectedChannel: ChannelSummary? = null,
     val channelContent: List<ChannelSection> = emptyList(),
     val channelContentLoading: Boolean = false,
+    val selectedPlaylist: PlaylistSummary? = null,
+    val playlistContent: List<MediaSummary> = emptyList(),
+    val playlistLoading: Boolean = false,
     val loading: Boolean = false,
     val message: String = "",
     val error: String = "",

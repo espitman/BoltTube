@@ -77,6 +77,14 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshAll() {
+        _uiState.value = _uiState.value.copy(
+            selectedChannel = null,
+            channelContent = emptyList(),
+            channelContentLoading = false,
+            selectedPlaylist = null,
+            playlistContent = emptyList(),
+            playlistLoading = false,
+        )
         refreshLibrary()
         refreshChannels()
     }
@@ -86,6 +94,8 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
             selectedChannel = channel,
             channelContent = emptyList(),
             channelContentLoading = true,
+            selectedPlaylist = null,
+            playlistContent = emptyList(),
             error = "",
         )
         loadChannelContent(channel)
@@ -96,7 +106,50 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
             selectedChannel = null,
             channelContent = emptyList(),
             channelContentLoading = false,
+            selectedPlaylist = null,
+            playlistContent = emptyList(),
         )
+    }
+
+    fun selectPlaylist(playlist: PlaylistSummary) {
+        _uiState.value = _uiState.value.copy(
+            selectedPlaylist = playlist,
+            playlistContent = emptyList(),
+            playlistLoading = true,
+            error = "",
+        )
+        loadPlaylistContent(playlist)
+    }
+
+    fun clearSelectedPlaylist() {
+        _uiState.value = _uiState.value.copy(
+            selectedPlaylist = null,
+            playlistContent = emptyList(),
+            playlistLoading = false,
+        )
+    }
+
+    private fun loadPlaylistContent(playlist: PlaylistSummary) {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repository.fetchPlaylistItems(serverUrl, playlist.id)
+            }.onSuccess { items ->
+                if (_uiState.value.selectedPlaylist?.id != playlist.id) return@onSuccess
+                _uiState.value = _uiState.value.copy(
+                    playlistContent = items,
+                    playlistLoading = false,
+                    error = "",
+                )
+            }.onFailure { error ->
+                if (_uiState.value.selectedPlaylist?.id != playlist.id) return@onFailure
+                _uiState.value = _uiState.value.copy(
+                    playlistContent = emptyList(),
+                    playlistLoading = false,
+                    error = error.message ?: "Could not load playlist items.",
+                )
+            }
+        }
     }
 
     private fun loadChannelContent(channel: ChannelSummary) {

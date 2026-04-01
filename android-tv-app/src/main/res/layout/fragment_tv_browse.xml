@@ -136,6 +136,78 @@
         </androidx.core.widget.NestedScrollView>
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/playlistDetailContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:background="@color/tv_focus"
+            android:elevation="24dp">
+
+            <ImageView
+                android:id="@+id/playlistHeroImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:alpha="0.22"
+                android:scaleType="centerCrop" />
+
+            <ImageView
+                android:id="@+id/playlistBackButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_gravity="start|top"
+                android:layout_marginStart="24dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/sidebar_item_selector"
+                android:clickable="true"
+                android:focusable="true"
+                android:padding="6dp"
+                android:src="@drawable/ic_back"
+                android:tint="@android:color/white" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start|bottom"
+                android:layout_marginStart="68dp"
+                android:layout_marginBottom="14dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PLAYLIST"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/playlistTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@android:color/white"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/playlistGrid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="16dp"
+            android:clipToPadding="false"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="16dp"
+            android:scrollbars="none" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/emptyView"
         android:layout_width="wrap_content"

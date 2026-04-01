@@ -92,7 +92,18 @@ def update_playlist():
 @app.route("/api/playlists/<int:p_id>/items")
 def get_playlist_items(p_id):
     if not library: return jsonify({"items": []})
-    return jsonify({"items": library.repo.get_playlist_items(p_id)})
+    raw_items = library.repo.get_playlist_items(p_id)
+    items = [{
+        "id": item["id"],
+        "fileName": item["file_name"],
+        "streamUrl": item["stream_url"],
+        "size": item["size"],
+        "createdAt": item["created_at"],
+        "thumbnailUrl": item.get("thumbnail_url"),
+        "duration": item.get("duration", 0),
+        "title": item.get("title") or item["file_name"].replace(".mp4", ""),
+    } for item in raw_items]
+    return jsonify({"items": items})
 
 @app.route("/api/channels/<int:channel_id>/content")
 def get_channel_content(channel_id):

@@ -32,16 +32,26 @@ class TvBrowseFragment : Fragment() {
 
     private lateinit var libraryContent: View
     private lateinit var channelDetailContent: View
+    private lateinit var playlistDetailContent: View
+    
     private lateinit var libraryGrid: RecyclerView
     private lateinit var channelScrollView: NestedScrollView
     private lateinit var channelSectionsContainer: LinearLayout
+    private lateinit var playlistGrid: RecyclerView
+
     private lateinit var emptyView: TextView
     private lateinit var channelEmptyView: TextView
     private lateinit var channelLoading: View
     private lateinit var channelTitle: TextView
     private lateinit var channelHeroImage: ImageView
     private lateinit var channelBackButton: View
+
+    private lateinit var playlistTitle: TextView
+    private lateinit var playlistHeroImage: ImageView
+    private lateinit var playlistBackButton: View
+
     private lateinit var libraryAdapter: TvVideoCardAdapter
+    private lateinit var playlistAdapter: TvVideoCardAdapter
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -55,8 +65,15 @@ class TvBrowseFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         libraryAdapter = TvVideoCardAdapter(::openVideo)
+        playlistAdapter = TvVideoCardAdapter(
+            onClick = ::openVideo,
+            nextFocusUpProvider = { pos -> if (pos < 4) R.id.playlistBackButton else View.NO_ID }
+        )
+
         libraryContent = view.findViewById(R.id.libraryContent)
         channelDetailContent = view.findViewById(R.id.channelDetailContent)
+        playlistDetailContent = view.findViewById(R.id.playlistDetailContent)
+        
         emptyView = view.findViewById(R.id.emptyView)
         channelEmptyView = view.findViewById(R.id.channelEmptyView)
         channelLoading = view.findViewById(R.id.channelLoading)
@@ -64,9 +81,21 @@ class TvBrowseFragment : Fragment() {
         channelHeroImage = view.findViewById(R.id.channelHeroImage)
         channelBackButton = view.findViewById(R.id.channelBackButton)
 
+        playlistTitle = view.findViewById(R.id.playlistTitle)
+        playlistHeroImage = view.findViewById(R.id.playlistHeroImage)
+        playlistBackButton = view.findViewById<ImageView>(R.id.playlistBackButton).apply {
+            nextFocusDownId = R.id.playlistGrid
+        }
+
         libraryGrid = view.findViewById<RecyclerView>(R.id.libraryGrid).apply {
             layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = libraryAdapter
+            itemAnimator = null
+        }
+
+        playlistGrid = view.findViewById<RecyclerView>(R.id.playlistGrid).apply {
+            layoutManager = GridLayoutManager(requireContext(), 4)
+            adapter = playlistAdapter
             itemAnimator = null
         }
 
@@ -80,6 +109,10 @@ class TvBrowseFragment : Fragment() {
             if (hasFocus) {
                 channelScrollView.smoothScrollTo(0, 0)
             }
+        }
+
+        playlistBackButton.setOnClickListener {
+            viewModel.clearSelectedPlaylist()
         }
 
         observeViewModel()
@@ -138,46 +171,76 @@ class TvBrowseFragment : Fragment() {
                 viewModel.uiState.collect { state ->
                     val libraryItems = state.library.map(::mediaToVideoItem)
                     libraryAdapter.submit(libraryItems)
-                    emptyView.visibility = if (libraryItems.isEmpty() && state.selectedChannel == null) View.VISIBLE else View.GONE
+                    emptyView.visibility = if (libraryItems.isEmpty() && state.selectedChannel == null && state.selectedPlaylist == null) View.VISIBLE else View.GONE
 
-                    if (state.selectedChannel == null) {
-                        libraryContent.visibility = View.VISIBLE
-                        channelDetailContent.visibility = View.GONE
-                    } else {
-                        libraryContent.visibility = View.GONE
-                        channelDetailContent.visibility = View.VISIBLE
+                    when {
+                        state.selectedPlaylist != null -> {
+                            libraryContent.visibility = View.GONE
+                            channelDetailContent.visibility = View.GONE
+                            playlistDetailContent.visibility = View.VISIBLE
 
-                        channelTitle.text = state.selectedChannel.name
-                        if (state.selectedChannel.thumbnailUrl.isNullOrBlank()) {
-                            channelHeroImage.setImageDrawable(null)
-                        } else {
-                            Glide.with(channelHeroImage)
-                                .load(viewModel.absoluteMediaUrl(state.selectedChannel.thumbnailUrl))
-                                .centerCrop()
-                                .into(channelHeroImage)
-                        }
+                            playlistTitle.text = state.selectedPlaylist.name
+                            if (state.selectedPlaylist.thumbnailUrl.isNullOrBlank()) {
+                                playlistHeroImage.setImageDrawable(null)
+                            } else {
+                                Glide.with(playlistHeroImage)
+                                    .load(viewModel.absoluteMediaUrl(state.selectedPlaylist.thumbnailUrl))
+                                    .centerCrop()
+                                    .into(playlistHeroImage)
+                            }
 
-                        channelLoading.visibility = if (state.channelContentLoading) View.VISIBLE else View.GONE
-                        val sectionModels = state.channelContent.map { section ->
-                            TvChannelSectionModel(
-                                title = section.playlist.name,
-                                items = section.items.map(::mediaToVideoItem),
-                            )
-                        }
-                        renderChannelSections(sectionModels)
-                        if (!state.channelContentLoading && sectionModels.isNotEmpty()) {
-                            channelScrollView.post { 
-                                channelScrollView.scrollTo(0, 0)
-                                // Auto-focus first item of first section
-                                val firstSection = channelSectionsContainer.getChildAt(0)
-                                val itemsView = firstSection?.findViewById<RecyclerView>(R.id.sectionItems)
-                                itemsView?.post {
-                                    itemsView.getChildAt(0)?.requestFocus()
-                                }
+                            val items = state.playlistContent.map(::mediaToVideoItem)
+                            playlistAdapter.submit(items)
+                            if (state.playlistLoading) {
+                                // show loading if added
                             }
                         }
-                        channelEmptyView.text = if (state.channelContentLoading) "" else getString(R.string.empty_channel)
-                        channelEmptyView.visibility = if (!state.channelContentLoading && sectionModels.isEmpty()) View.VISIBLE else View.GONE
+                        state.selectedChannel != null -> {
+                            libraryContent.visibility = View.GONE
+                            channelDetailContent.visibility = View.VISIBLE
+                            playlistDetailContent.visibility = View.GONE
+
+                            channelTitle.text = state.selectedChannel.name
+                            if (state.selectedChannel.thumbnailUrl.isNullOrBlank()) {
+                                channelHeroImage.setImageDrawable(null)
+                            } else {
+                                Glide.with(channelHeroImage)
+                                    .load(viewModel.absoluteMediaUrl(state.selectedChannel.thumbnailUrl))
+                                    .centerCrop()
+                                    .into(channelHeroImage)
+                            }
+
+                            channelLoading.visibility = if (state.channelContentLoading) View.VISIBLE else View.GONE
+                            val sectionModels = state.channelContent.map { section ->
+                                TvChannelSectionModel(
+                                    title = section.playlist.name,
+                                    items = section.items.take(10).map(::mediaToVideoItem),
+                                    playlist = section.playlist,
+                                )
+                            }
+                            renderChannelSections(sectionModels)
+                            if (!state.channelContentLoading && sectionModels.isNotEmpty()) {
+                                channelScrollView.post { 
+                                    channelScrollView.scrollTo(0, 0)
+                                    val firstSection = channelSectionsContainer.getChildAt(0)
+                                    val itemsView = firstSection?.findViewById<RecyclerView>(R.id.sectionItems)
+                                    if (itemsView != null && itemsView.getChildAt(0) == null) {
+                                        itemsView.post {
+                                            itemsView.getChildAt(0)?.requestFocus()
+                                        }
+                                    } else {
+                                        itemsView?.getChildAt(0)?.requestFocus()
+                                    }
+                                }
+                            }
+                            channelEmptyView.text = if (state.channelContentLoading) "" else getString(R.string.empty_channel)
+                            channelEmptyView.visibility = if (!state.channelContentLoading && sectionModels.isEmpty()) View.VISIBLE else View.GONE
+                        }
+                        else -> {
+                            libraryContent.visibility = View.VISIBLE
+                            channelDetailContent.visibility = View.GONE
+                            playlistDetailContent.visibility = View.GONE
+                        }
                     }
                 }
             }
@@ -209,6 +272,7 @@ class TvBrowseFragment : Fragment() {
                 false,
             )
             val titleView = sectionView.findViewById<TextView>(R.id.sectionTitle)
+            val seeAllView = sectionView.findViewById<TextView>(R.id.sectionSeeAll)
             val itemsView = sectionView.findViewById<RecyclerView>(R.id.sectionItems)
             val adapter = TvVideoCardAdapter(
                 onClick = ::openVideo,
@@ -218,6 +282,10 @@ class TvBrowseFragment : Fragment() {
             )
 
             titleView.text = section.title
+            seeAllView.setOnClickListener {
+                viewModel.selectPlaylist(section.playlist)
+            }
+            
             itemsView.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             itemsView.adapter = adapter
             adapter.submit(section.items)
@@ -235,6 +303,7 @@ class TvBrowseFragment : Fragment() {
 private data class TvChannelSectionModel(
     val title: String,
     val items: List<VideoItem>,
+    val playlist: PlaylistSummary,
 )
 
 private class TvVideoCardAdapter(
@@ -242,6 +311,7 @@ private class TvVideoCardAdapter(
     private val onFocusGained: ((View) -> Unit)? = null,
     private val horizontalCardWidthPx: Int? = null,
     private val nextFocusUpId: Int = View.NO_ID,
+    private val nextFocusUpProvider: ((Int) -> Int)? = null,
 ) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
@@ -268,14 +338,15 @@ private class TvVideoCardAdapter(
                 RecyclerView.LayoutParams.WRAP_CONTENT,
             )
         }
-        if (nextFocusUpId != View.NO_ID) {
-            view.nextFocusUpId = nextFocusUpId
-        }
         return VideoViewHolder(view, onClick, onFocusGained)
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
         holder.bind(items[position])
+        val upId = nextFocusUpProvider?.invoke(position) ?: nextFocusUpId
+        if (upId != View.NO_ID) {
+            holder.itemView.nextFocusUpId = upId
+        }
     }
 
     override fun getItemCount(): Int = items.size
