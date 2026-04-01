@@ -57,6 +57,43 @@ def health(): return jsonify({"status": "ok", "port": 9864, "downloadDir": str(l
 def list_library():
     return jsonify({"items": library.list_items() if library else []})
 
+@app.route("/api/playlists")
+def list_playlists():
+    if not library: return jsonify({"items": []})
+    return jsonify({"items": library.repo.get_playlists()})
+
+@app.route("/api/playlists/create", methods=["POST"])
+def create_playlist():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    p_id = library.repo.create_playlist(data["name"], data.get("thumbnailUrl"))
+    return jsonify({"status": "ok", "id": p_id})
+
+@app.route("/api/playlists/add", methods=["POST"])
+def add_to_playlist():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    library.repo.add_to_playlist(int(data["playlistId"]), data["mediaId"])
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/delete", methods=["POST"])
+def delete_playlist():
+    if not library: return jsonify({"error": "not init"}), 500
+    library.repo.delete_playlist(int(request.json["id"]))
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/update", methods=["POST"])
+def update_playlist():
+    if not library: return jsonify({"error": "not init"}), 500
+    data = request.json
+    library.repo.update_playlist(int(data["id"]), data["name"])
+    return jsonify({"status": "ok"})
+
+@app.route("/api/playlists/<int:p_id>/items")
+def get_playlist_items(p_id):
+    if not library: return jsonify({"items": []})
+    return jsonify({"items": library.repo.get_playlist_items(p_id)})
+
 @app.route("/media/<media_id>")
 def serve_video(media_id):
     if not library: return "Not initialized", 500
