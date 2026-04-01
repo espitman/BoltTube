@@ -26,6 +26,7 @@ struct MediaLibraryItem: Codable, Identifiable, Hashable {
     let size: String
     let createdAt: String
     let thumbnailUrl: String?
+    let duration: Int
 }
 
 struct MediaLibraryResponse: Codable {

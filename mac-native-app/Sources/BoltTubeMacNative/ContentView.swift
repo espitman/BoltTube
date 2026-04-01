@@ -158,7 +158,7 @@ struct ContentView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(controller.libraryItems.prefix(5)) { item in
-                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl, duration: item.duration, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
                         }
                     }
                 }
@@ -286,37 +286,65 @@ struct VideoCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: onPlay) {
-                ZStack {
+                ZStack(alignment: .bottomTrailing) {
                     if let thumb = item.thumbnailUrl, !thumb.isEmpty {
                         AsyncImage(url: URL(string: thumb)) { phase in
                             if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) }
                             else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 24)) } }
                         }
                     } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.2)).font(.system(size: 32)) } }
+                    
+                    if item.duration > 0 {
+                        Text(formatDuration(item.duration))
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.black.opacity(0.75)).foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .padding(8)
+                    }
                 }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: .black.opacity(0.1), radius: 8, y: 4)
             }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.fileName).font(.system(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2)
-                Text(item.size).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.gray)
             }.padding(.horizontal, 4)
         }
+    }
+    
+    private func formatDuration(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 
 struct RecentCardCompact: View {
-    let title: String; let thumbnailUrl: String?; let onPlay: () -> Void; let onDelete: () -> Void
+    let title: String; let thumbnailUrl: String?; let duration: Int; let onPlay: () -> Void; let onDelete: () -> Void
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onPlay) {
-                ZStack {
+                ZStack(alignment: .bottomTrailing) {
                     if let thumb = thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } }
                     else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) }
-                    Image(systemName: "play.circle.fill").font(.system(size: 18)).foregroundStyle(.white.opacity(0.8)).shadow(radius: 2)
-                }.frame(width: 68, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
+                    
+                    if duration > 0 {
+                        Text(formatDuration(duration))
+                            .font(.system(size: 8, weight: .bold))
+                            .padding(.horizontal, 4).padding(.vertical, 2)
+                            .background(.black.opacity(0.75)).foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .padding(4)
+                    }
+                }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8))
             }.buttonStyle(.plain)
             Button(action: onPlay) { Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
             Button { onDelete() } label: { Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.7)).padding(6) }.buttonStyle(.plain)
         }.padding(.vertical, 4)
+    }
+    
+    private func formatDuration(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return String(format: "%d:%02d", m, s)
     }
 }
 

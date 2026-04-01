@@ -1,6 +1,5 @@
 import sqlite3
-import threading
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -14,6 +13,7 @@ class MediaItem:
     created_at: str
     source_url: str = ""
     thumbnail_url: str = ""
+    duration: int = 0
 
 class MediaRepository:
     def __init__(self, db_path: Path):
@@ -31,7 +31,8 @@ class MediaRepository:
                     size TEXT,
                     created_at TEXT,
                     source_url TEXT,
-                    thumbnail_url TEXT
+                    thumbnail_url TEXT,
+                    duration INTEGER DEFAULT 0
                 )
             """)
             conn.execute("""
@@ -41,6 +42,10 @@ class MediaRepository:
                     created_at TEXT
                 )
             """)
+            try:
+                conn.execute("ALTER TABLE media_items ADD COLUMN duration INTEGER DEFAULT 0")
+            except sqlite3.OperationalError: pass # Already exists
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlist_items (
                     playlist_id INTEGER,
@@ -56,9 +61,9 @@ class MediaRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO media_items 
-                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url))
+                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration))
 
     def delete_item(self, media_id: str):
         with sqlite3.connect(self.db_path) as conn:
@@ -67,11 +72,11 @@ class MediaRepository:
     def get_item(self, media_id: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT * FROM media_items WHERE id = ?", (media_id,)).fetchone()
+            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration FROM media_items WHERE id = ?", (media_id,)).fetchone()
             return dict(row) if row else None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT * FROM media_items ORDER BY created_at DESC").fetchall()
+            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]

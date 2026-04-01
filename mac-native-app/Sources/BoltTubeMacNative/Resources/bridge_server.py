@@ -99,7 +99,7 @@ class BridgeService:
             subprocess.run([ffmpeg, "-nostdin", "-y", "-i", str(v_p), "-i", str(a_p), "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", str(f_path)], capture_output=True, stdin=subprocess.DEVNULL)
             v_p.unlink(missing_ok=True); a_p.unlink(missing_ok=True)
 
-        item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb)
+        item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)))
         return {"id": item.id, "streamUrl": item.stream_url, "fileName": item.file_name}
 
     def list_items(self):
