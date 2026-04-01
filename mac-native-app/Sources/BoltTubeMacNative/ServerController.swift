@@ -339,7 +339,7 @@ final class ServerController {
     }
 
     func localURL(for item: MediaLibraryItem) -> URL {
-        downloadDirectory.appendingPathComponent(item.fileName)
+        return URL(string: "\(lanURLDisplay)\(item.streamUrl)")!
     }
 
     func refreshLibrary() async {

@@ -312,6 +312,7 @@ struct VideoCard: View {
                             .background(.black.opacity(0.75)).foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .padding(8)
+                            .zIndex(1)
                     }
                     
                     if controller.refreshingIDs.contains(item.id) {
@@ -358,6 +359,7 @@ struct RecentCardCompact: View {
                             .background(.black.opacity(0.75)).foregroundStyle(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                             .padding(4)
+                            .zIndex(1)
                     }
                     
                     if controller.refreshingIDs.contains(item.id) {

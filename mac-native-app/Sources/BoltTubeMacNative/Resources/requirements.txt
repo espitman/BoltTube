@@ -1,1 +1,3 @@
-pytubefix==8.13.1
+pytubefix
+flask
+flask-cors
