@@ -287,6 +287,7 @@ class TvBrowseFragment : Fragment() {
             seeAllView.setOnClickListener {
                 viewModel.selectPlaylist(section.playlist)
             }
+            seeAllView.nextFocusLeftId = R.id.sectionItems
             
             itemsView.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             itemsView.adapter = adapter
