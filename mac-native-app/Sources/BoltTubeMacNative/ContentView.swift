@@ -148,20 +148,20 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 HStack(spacing: 24) {
-                    Button { controller.activeManagementTab = 0 } label: { Text("Playlists").font(.system(size: 24, weight: .bold)).foregroundStyle(controller.activeManagementTab == 0 ? slate900 : slate600.opacity(0.4)) }.buttonStyle(.plain)
-                    Button { controller.activeManagementTab = 1 } label: { Text("Channels").font(.system(size: 24, weight: .bold)).foregroundStyle(controller.activeManagementTab == 1 ? slate900 : slate600.opacity(0.4)) }.buttonStyle(.plain)
+                    Button { controller.activeManagementTab = 0 } label: { Text("Channels").font(.system(size: 24, weight: .bold)).foregroundStyle(controller.activeManagementTab == 0 ? slate900 : slate600.opacity(0.4)) }.buttonStyle(.plain)
+                    Button { controller.activeManagementTab = 1 } label: { Text("Playlists").font(.system(size: 24, weight: .bold)).foregroundStyle(controller.activeManagementTab == 1 ? slate900 : slate600.opacity(0.4)) }.buttonStyle(.plain)
                 }
                 Spacer()
-                Button { if controller.activeManagementTab == 0 { showCreatePlaylist = true } else { showCreateChannel = true } } label: { HStack { Image(systemName: "plus"); Text(controller.activeManagementTab == 0 ? "New Playlist" : "New Channel") }.font(.system(size: 13, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 16).padding(.vertical, 8).background(accentBlue).clipShape(Capsule()) }.buttonStyle(.plain)
+                Button { if controller.activeManagementTab == 0 { showCreateChannel = true } else { showCreatePlaylist = true } } label: { HStack { Image(systemName: "plus"); Text(controller.activeManagementTab == 0 ? "New Channel" : "New Playlist") }.font(.system(size: 13, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 16).padding(.vertical, 8).background(accentBlue).clipShape(Capsule()) }.buttonStyle(.plain)
             }.padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 32)
             
             ZStack {
                 if controller.activeManagementTab == 0 {
-                    if let playlist = controller.selectedPlaylist { playlistDetailView(playlist: playlist) }
-                    else { playlistsGrid(metrics: metrics) }
-                } else {
                     if let channel = controller.selectedChannel { channelDetailView(channel: channel) }
                     else { channelsGrid(metrics: metrics) }
+                } else {
+                    if let playlist = controller.selectedPlaylist { playlistDetailView(playlist: playlist) }
+                    else { playlistsGrid(metrics: metrics) }
                 }
             }
         }.background(Color(red: 0.98, green: 0.98, blue: 1.0))
