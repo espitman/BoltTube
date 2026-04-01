@@ -127,7 +127,8 @@ class TvBrowseFragment : Fragment() {
         startActivity(
             Intent(requireContext(), VideoPlayerActivity::class.java)
                 .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
-                .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title),
+                .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title)
+                .putExtra(VideoPlayerActivity.EXTRA_ID, item.id),
         )
     }
 
@@ -159,6 +160,11 @@ class TvBrowseFragment : Fragment() {
             value.toFloat(),
             resources.displayMetrics,
         ).toInt()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        libraryAdapter.notifyDataSetChanged()
     }
 
     private fun observeViewModel() {
@@ -365,7 +371,10 @@ private class TvVideoCardAdapter(
         private val titleView = itemView.findViewById<TextView>(R.id.cardTitle)
         private val dateView = itemView.findViewById<TextView>(R.id.cardDate)
         private val badgeView = itemView.findViewById<TextView>(R.id.cardSubtitle)
+        private val progressBg = itemView.findViewById<View>(R.id.cardProgressBackground)
+        private val progressFill = itemView.findViewById<View>(R.id.cardProgressFill)
         private var boundItem: VideoItem? = null
+        private val prefs = itemView.context.getSharedPreferences("bolttube_progress", android.content.Context.MODE_PRIVATE)
 
         init {
             itemView.setOnClickListener {
@@ -409,6 +418,29 @@ private class TvVideoCardAdapter(
                 .centerCrop()
                 .error(android.R.color.transparent)
                 .into(imageView)
+
+            updateProgress(item.id)
+        }
+
+        private fun updateProgress(id: String) {
+            val pos = prefs.getLong("progress_$id", 0)
+            val dur = prefs.getLong("duration_$id", 0)
+
+            if (dur > 0 && pos > 0) {
+                progressBg.visibility = View.VISIBLE
+                progressFill.visibility = View.VISIBLE
+                
+                val percent = (pos.toDouble() / dur.toDouble())
+                progressFill.post {
+                    val fullWidth = progressBg.width
+                    val params = progressFill.layoutParams
+                    params.width = (fullWidth * percent).toInt().coerceAtLeast(1)
+                    progressFill.layoutParams = params
+                }
+            } else {
+                progressBg.visibility = View.GONE
+                progressFill.visibility = View.GONE
+            }
         }
 
         private fun formatCreatedDate(createdAt: String): String {

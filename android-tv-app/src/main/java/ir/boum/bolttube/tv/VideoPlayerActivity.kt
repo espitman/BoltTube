@@ -13,11 +13,16 @@ class VideoPlayerActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView
+    private var mediaId: String? = null
+    private var initialPosition: Long = 0
+    private val prefs by lazy { getSharedPreferences("bolttube_progress", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_player)
         playerView = findViewById(R.id.player_view)
+        mediaId = intent.getStringExtra(EXTRA_ID)
+        initialPosition = prefs.getLong("progress_${mediaId}", 0)
     }
 
     override fun onStart() {
@@ -55,6 +60,9 @@ class VideoPlayerActivity : AppCompatActivity() {
         })
 
         exoPlayer.setMediaItem(MediaItem.fromUri(streamUrl))
+        if (initialPosition > 0) {
+            exoPlayer.seekTo(initialPosition)
+        }
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
     }
@@ -81,15 +89,36 @@ class VideoPlayerActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        saveProgress()
+    }
+
     override fun onStop() {
+        saveProgress()
         playerView.player = null
         player?.release()
         player = null
         super.onStop()
     }
 
+    private fun saveProgress() {
+        val p = player ?: return
+        val id = mediaId ?: return
+        val pos = p.currentPosition
+        val dur = p.duration
+        if (dur > 0) {
+            prefs.edit().apply {
+                putLong("progress_$id", pos)
+                putLong("duration_$id", dur)
+                apply()
+            }
+        }
+    }
+
     companion object {
         const val EXTRA_STREAM_URL = "stream_url"
         const val EXTRA_TITLE = "title"
+        const val EXTRA_ID = "media_id"
     }
 }

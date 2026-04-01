@@ -46,6 +46,23 @@
             android:textColor="@android:color/white"
             android:textSize="11sp"
             android:textStyle="bold" />
+
+        <!-- Progress Bar (YouTube Style) -->
+        <View
+            android:id="@+id/cardProgressBackground"
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom"
+            android:background="#44000000"
+            android:visibility="gone" />
+
+        <View
+            android:id="@+id/cardProgressFill"
+            android:layout_width="0dp"
+            android:layout_height="3dp"
+            android:layout_gravity="bottom"
+            android:background="#FF0000"
+            android:visibility="gone" />
     </FrameLayout>
 
     <!-- INFO AREA -->
