@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import AVKit
 
-private let fixedWindowSize = NSSize(width: 980, height: 546)
+private let fixedWindowSize = NSSize(width: 1080, height: 546)
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {

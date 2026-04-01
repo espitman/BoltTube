@@ -17,6 +17,7 @@ struct ContentView: View {
             let metrics = LayoutMetrics(containerWidth: proxy.size.width)
 
             HStack(spacing: 0) {
+                sidebar(metrics: metrics)
                 mainPanel(metrics: metrics)
                 rightRail(metrics: metrics)
             }
@@ -63,7 +64,7 @@ struct ContentView: View {
                 player = nil
             }
         }
-        .frame(minWidth: 980, minHeight: 480)
+        .frame(minWidth: 1080, minHeight: 480)
         .background(Color(red: 0.98, green: 0.98, blue: 1.0))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .ignoresSafeArea()
@@ -99,18 +100,56 @@ struct ContentView: View {
         player = nil
     }
 
+    // MARK: - Sidebar
+    private func sidebar(metrics: LayoutMetrics) -> some View {
+        VStack(spacing: 32) {
+            Circle()
+                .fill(accentRed)
+                .frame(width: 50, height: 50)
+                .overlay {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: 20))
+                }
+                .shadow(color: accentRed.opacity(0.3), radius: 10, y: 5)
+                .padding(.top, 44)
+            
+            VStack(spacing: 28) {
+                SidebarIcon(icon: "house.fill", isSelected: true)
+                SidebarIcon(icon: "list.bullet.rectangle.fill", isSelected: false)
+                SidebarIcon(icon: "person.fill", isSelected: false)
+                SidebarIcon(icon: "gearshape.fill", isSelected: false)
+            }
+            
+            Spacer()
+        }
+        .frame(width: 100)
+        .background(Color.black.opacity(0.92))
+        .overlay(alignment: .trailing) { Divider().opacity(0.1) }
+    }
+
+    private struct SidebarIcon: View {
+        let icon: String
+        let isSelected: Bool
+        var body: some View {
+            VStack(spacing: 0) {
+                Image(systemName: icon)
+                    .font(.system(size: 24))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(0.2))
+                    .frame(width: 44, height: 44)
+                    .background(isSelected ? .white.opacity(0.08) : .clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .contentShape(Rectangle())
+        }
+    }
+
     // MARK: - Main Panel
     private func mainPanel(metrics: LayoutMetrics) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(accentRed).frame(width: 40, height: 40)
-                    Image(systemName: "play.fill").foregroundStyle(.white).font(.system(size: 14))
-                }
-                HStack(spacing: 4) {
-                    Text("BoltTube").font(.system(size: 20, weight: .bold)).foregroundStyle(slate900)
-                    Text("Import").font(.system(size: 20, weight: .medium)).foregroundStyle(slate600)
-                }
+                Text("BoltTube").font(.system(size: 20, weight: .bold)).foregroundStyle(slate900)
+                Text("Import").font(.system(size: 20, weight: .medium)).foregroundStyle(slate600)
             }
             .padding(.horizontal, 40).padding(.top, 40).padding(.bottom, 48)
 
@@ -148,12 +187,11 @@ struct ContentView: View {
                         .overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.1), lineWidth: 1) }
                     }
 
-                    // Preview (skeleton or real)
+                    // Preview
                     HStack(spacing: 24) {
                         ZStack(alignment: .bottomTrailing) {
                             Group {
                                 if controller.isResolvingQualities {
-                                    // Skeleton thumbnail
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(Color.gray.opacity(0.08))
                                         .frame(width: 200, height: 112)
@@ -162,11 +200,7 @@ struct ContentView: View {
                                     RoundedRectangle(cornerRadius: 12)
                                         .fill(LinearGradient(colors: [Color(white: 0.18), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
                                         .frame(width: 200, height: 112)
-                                        .overlay {
-                                            Image(systemName: "play.fill")
-                                                .foregroundStyle(.white.opacity(0.15))
-                                                .font(.system(size: 28))
-                                        }
+                                        .overlay { Image(systemName: "play.fill").foregroundStyle(.white.opacity(0.15)).font(.system(size: 28)) }
                                 } else {
                                     AsyncImage(url: URL(string: controller.resolvedThumbnailUrl)) { phase in
                                         switch phase {
@@ -174,15 +208,12 @@ struct ContentView: View {
                                             image.resizable().aspectRatio(contentMode: .fill)
                                                 .frame(width: 200, height: 112).clipped()
                                         case .failure: Color.gray.opacity(0.15)
-                                        default:
-                                            Color.gray.opacity(0.08)
-                                                .overlay { ProgressView().scaleEffect(0.8) }
+                                        default: Color.gray.opacity(0.08).overlay { ProgressView().scaleEffect(0.8) }
                                         }
                                     }
                                     .frame(width: 200, height: 112)
                                 }
                             }
-
                             if controller.resolvedDurationSeconds > 0 {
                                 let m = controller.resolvedDurationSeconds / 60
                                 let s = controller.resolvedDurationSeconds % 60
@@ -190,8 +221,7 @@ struct ContentView: View {
                                     .font(.system(size: 11, weight: .bold))
                                     .padding(.horizontal, 8).padding(.vertical, 4)
                                     .background(.black.opacity(0.75)).foregroundStyle(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    .padding(8)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6)).padding(8)
                             }
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -199,12 +229,9 @@ struct ContentView: View {
 
                         VStack(alignment: .leading, spacing: 6) {
                             if controller.isResolvingQualities && controller.resolvedTitle.isEmpty {
-                                // Skeleton title
                                 VStack(alignment: .leading, spacing: 8) {
-                                    RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.1))
-                                        .frame(maxWidth: .infinity).frame(height: 20).shimmering()
-                                    RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.08))
-                                        .frame(width: 160).frame(height: 14).shimmering()
+                                    RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.1)).frame(maxWidth: .infinity).frame(height: 20).shimmering()
+                                    RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.08)).frame(width: 160).frame(height: 14).shimmering()
                                 }
                             } else {
                                 Text(controller.resolvedTitle.isEmpty ? "Ready for download" : controller.resolvedTitle)
@@ -216,26 +243,18 @@ struct ContentView: View {
 
                     // Quality + Download
                     VStack(alignment: .leading, spacing: 16) {
-
-                        // Quality chips
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Quality")
                                 .font(.system(size: 13, weight: .bold)).foregroundStyle(slate600)
-
                             if controller.isResolvingQualities {
-                                // Skeleton chips
                                 HStack(spacing: 8) {
                                     ForEach(0..<4, id: \.self) { i in
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Color.gray.opacity(0.1))
-                                            .frame(width: CGFloat(50 + i * 10), height: 44)
-                                            .shimmering()
+                                        RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)).frame(width: CGFloat(50 + i * 10), height: 44).shimmering()
                                     }
                                 }
                             } else if controller.formats.isEmpty {
                                 Text("Paste a link to see quality options")
-                                    .font(.system(size: 13)).foregroundStyle(slate600.opacity(0.6))
-                                    .frame(height: 44)
+                                    .font(.system(size: 13)).foregroundStyle(slate600.opacity(0.6)).frame(height: 44)
                             } else {
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     HStack(spacing: 8) {
@@ -243,134 +262,83 @@ struct ContentView: View {
                                             let isSelected = controller.selectedFormatID == format.id
                                             Button(action: { controller.selectedFormatID = format.id }) {
                                                 VStack(spacing: 2) {
-                                                    Text(format.title)
-                                                        .font(.system(size: 13, weight: isSelected ? .black : .bold))
-                                                        .foregroundStyle(isSelected ? .white : slate900)
+                                                    Text(format.title).font(.system(size: 13, weight: isSelected ? .black : .bold)).foregroundStyle(isSelected ? .white : slate900)
                                                     if !format.filesize.isEmpty {
-                                                        Text(format.filesize)
-                                                            .font(.system(size: 10, weight: .medium))
-                                                            .foregroundStyle(isSelected ? .white.opacity(0.8) : slate600)
+                                                        Text(format.filesize).font(.system(size: 10, weight: .medium)).foregroundStyle(isSelected ? .white.opacity(0.8) : slate600)
                                                     }
                                                 }
                                                 .padding(.horizontal, 14).padding(.vertical, 8)
                                                 .background(
-                                                    RoundedRectangle(cornerRadius: 8)
-                                                        .fill(isSelected ? accentBlue : Color.white)
-                                                        .overlay(RoundedRectangle(cornerRadius: 8)
-                                                            .stroke(isSelected ? accentBlue : slate900.opacity(0.12), lineWidth: 1))
+                                                    RoundedRectangle(cornerRadius: 8).fill(isSelected ? accentBlue : Color.white)
+                                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? accentBlue : slate900.opacity(0.12), lineWidth: 1))
                                                 )
-                                            }
-                                            .buttonStyle(.plain)
+                                            }.buttonStyle(.plain)
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Download / Progress Section
                         let isReady = !controller.formats.isEmpty && !controller.isResolvingQualities && !controller.isDownloading
-
                         if controller.isDownloading {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
                                         Text(controller.downloadProgressText.isEmpty ? "Downloading..." : controller.downloadProgressText)
-                                            .font(.system(size: 10, weight: .bold)).foregroundStyle(slate600)
-                                            .lineLimit(1)
+                                            .font(.system(size: 10, weight: .bold)).foregroundStyle(slate600).lineLimit(1)
                                         Spacer()
-                                        Text("\(Int(controller.downloadProgress * 100))%")
-                                            .font(.system(size: 11, weight: .black)).foregroundStyle(accentBlue)
+                                        Text("\(Int(controller.downloadProgress * 100))%").font(.system(size: 11, weight: .black)).foregroundStyle(accentBlue)
                                     }
-                                    
                                     GeometryReader { gp in
                                         ZStack(alignment: .leading) {
                                             Capsule().fill(slate900.opacity(0.05)).frame(height: 6)
-                                            Capsule().fill(accentBlue)
-                                                .frame(width: gp.size.width * controller.downloadProgress, height: 6)
+                                            Capsule().fill(accentBlue).frame(width: gp.size.width * controller.downloadProgress, height: 6)
                                         }
                                     }.frame(height: 6)
                                 }
-                                
-                                Button(action: { controller.cancelDownload() }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(Color.red.opacity(0.8))
-                                        .symbolRenderingMode(.hierarchical)
-                                }
-                                .buttonStyle(.plain)
+                                Button(action: { controller.cancelDownload() }) { Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(Color.red.opacity(0.8)) }.buttonStyle(.plain)
                             }
-                            .padding(.horizontal, 16).padding(.vertical, 8)
-                            .frame(maxWidth: .infinity).frame(height: 46)
-                            .background(Color.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1))
+                            .padding(.horizontal, 16).padding(.vertical, 8).frame(maxWidth: .infinity).frame(height: 46)
+                            .background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1))
                         } else {
                             Button(action: { Task { await controller.downloadVideo() } }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "arrow.down")
-                                    Text("Download")
-                                }
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(isReady ? .white : Color.gray)
-                                .frame(maxWidth: .infinity).frame(height: 46)
-                                .background(isReady ? accentBlue : Color.gray.opacity(0.1))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!isReady)
+                                HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }
+                                .font(.system(size: 14, weight: .bold)).foregroundStyle(isReady ? .white : Color.gray)
+                                .frame(maxWidth: .infinity).frame(height: 46).background(isReady ? accentBlue : Color.gray.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 12))
+                            }.buttonStyle(.plain).disabled(!isReady)
                         }
                     }
                 }
                 .padding(.horizontal, 40)
             }
         }
+        .frame(width: 730)
     }
 
     // MARK: - Right Rail
     private func rightRail(metrics: LayoutMetrics) -> some View {
         VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Recent Downloads")
-                    .font(.system(size: 15, weight: .bold)).foregroundStyle(slate900)
-
+                Text("Recent Downloads").font(.system(size: 15, weight: .bold)).foregroundStyle(slate900)
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
-                        ForEach(controller.libraryItems.prefix(10)) { item in
-                            RecentCardCompact(
-                                title: item.fileName,
-                                thumbnailUrl: item.thumbnailUrl,
-                                onPlay: { playingItem = item },
-                                onDelete: { itemToDelete = item }
-                            )
+                        ForEach(controller.libraryItems.prefix(5)) { item in
+                            RecentCardCompact(title: item.fileName, thumbnailUrl: item.thumbnailUrl, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
                         }
-
                         if controller.libraryItems.isEmpty {
                             VStack(spacing: 12) {
-                                Image(systemName: "tray").font(.system(size: 24))
-                                    .foregroundStyle(slate600.opacity(0.3))
-                                Text("No downloads yet").font(.system(size: 12))
-                                    .foregroundStyle(slate600.opacity(0.5))
-                            }
-                            .frame(maxWidth: .infinity).padding(.vertical, 40)
+                                Image(systemName: "tray").font(.system(size: 24)).foregroundStyle(slate600.opacity(0.3))
+                                Text("No downloads yet").font(.system(size: 12)).foregroundStyle(slate600.opacity(0.5))
+                            }.frame(maxWidth: .infinity).padding(.vertical, 40)
                         }
                     }
                 }
             }
-
             Spacer()
-
             VStack(alignment: .leading, spacing: 6) {
-                Text("REMOTE ACCESS")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(slate600.opacity(0.4))
-                    .kerning(0.5)
-                
-                Text(controller.lanURLDisplay)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(accentBlue)
-            }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 24)
+                Text("REMOTE ACCESS").font(.system(size: 9, weight: .bold)).foregroundStyle(slate600.opacity(0.4)).kerning(0.5)
+                Text(controller.lanURLDisplay).font(.system(size: 12, weight: .bold)).foregroundStyle(accentBlue)
+            }.padding(.horizontal, 8).padding(.bottom, 24)
         }
         .frame(width: 250)
         .padding(.horizontal, 24).padding(.top, 40)
@@ -380,42 +348,22 @@ struct ContentView: View {
 }
 
 // MARK: - Shimmer Effect
-
 struct ShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = -1.5
-
     func body(content: Content) -> some View {
-        content
-            .overlay(
-                LinearGradient(
-                    gradient: Gradient(colors: [.clear, .white.opacity(0.45), .clear]),
-                    startPoint: .init(x: phase, y: 0.5),
-                    endPoint: .init(x: phase + 0.8, y: 0.5)
-                )
+        content.overlay(
+                LinearGradient(gradient: Gradient(colors: [.clear, .white.opacity(0.45), .clear]), startPoint: .init(x: phase, y: 0.5), endPoint: .init(x: phase + 0.8, y: 0.5))
                 .blendMode(.plusLighter)
-            )
-            .onAppear {
-                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
-                    phase = 1.5
-                }
-            }
+            ).onAppear { withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { phase = 1.5 } }
     }
 }
-
-extension View {
-    func shimmering() -> some View {
-        modifier(ShimmerModifier())
-    }
-}
-
-// MARK: - Components
+extension View { func shimmering() -> some View { modifier(ShimmerModifier()) } }
 
 struct RecentCardCompact: View {
     let title: String
     let thumbnailUrl: String?
     let onPlay: () -> Void
     let onDelete: () -> Void
-
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onPlay) {
@@ -423,57 +371,24 @@ struct RecentCardCompact: View {
                     if let thumb = thumbnailUrl, !thumb.isEmpty {
                         AsyncImage(url: URL(string: thumb)) { phase in
                             switch phase {
-                            case .success(let image):
-                                image.resizable().aspectRatio(contentMode: .fill)
-                            case .failure:
-                                Color.gray.opacity(0.1)
-                                    .overlay { Image(systemName: "play.slash.fill").font(.system(size: 10)).foregroundStyle(.gray) }
-                            default:
-                                Color.gray.opacity(0.05)
+                            case .success(let image): image.resizable().aspectRatio(contentMode: .fill)
+                            case .failure: Color.gray.opacity(0.1).overlay { Image(systemName: "play.slash.fill").font(.system(size: 10)).foregroundStyle(.gray) }
+                            default: Color.gray.opacity(0.05)
                             }
                         }
                     } else {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.gray.opacity(0.1))
-                            .overlay {
-                                Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11))
-                            }
+                        RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)).overlay { Image(systemName: "play.fill").foregroundStyle(.gray).font(.system(size: 11)) }
                     }
-                    
-                    // Small play badge
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.white.opacity(0.8))
-                        .shadow(radius: 2)
-                }
-                .frame(width: 68, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-
+                    Image(systemName: "play.circle.fill").font(.system(size: 18)).foregroundStyle(.white.opacity(0.8)).shadow(radius: 2)
+                }.frame(width: 68, height: 44).clipShape(RoundedRectangle(cornerRadius: 8))
+            }.buttonStyle(.plain)
             Button(action: onPlay) {
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .multilineTextAlignment(.leading)
-            }
-            .buttonStyle(.plain)
-
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).multilineTextAlignment(.leading)
+            }.buttonStyle(.plain)
             Button(action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.red.opacity(0.7))
-                    .padding(6)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.vertical, 4)
+                Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.7)).padding(6).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }.padding(.vertical, 4)
     }
 }
-
-private struct LayoutMetrics {
-    let containerWidth: CGFloat
-}
+private struct LayoutMetrics { let containerWidth: CGFloat }
