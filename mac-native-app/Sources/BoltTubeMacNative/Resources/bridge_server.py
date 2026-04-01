@@ -7,6 +7,7 @@ import subprocess
 import sys
 import uuid
 import threading
+import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -42,55 +43,107 @@ class MediaLibrary:
     def __init__(self, download_dir: Path):
         self.download_dir = download_dir
         self.download_dir.mkdir(parents=True, exist_ok=True)
-        self.manifest_path = self.download_dir / ".bolttube-library.json"
-        self._items = {}
+        self.db_path = self.download_dir / "bolttube.db"
+        self.json_backup_path = self.download_dir / ".bolttube-library.json"
         self._lock = threading.Lock()
-        self._load()
+        self._init_db()
+        self._migrate_from_json()
 
-    def _load(self):
-        if self.manifest_path.exists():
+    def _init_db(self):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS media_items (
+                    id TEXT PRIMARY KEY,
+                    file_name TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    stream_url TEXT NOT NULL,
+                    size TEXT,
+                    created_at TEXT,
+                    source_url TEXT,
+                    thumbnail_url TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE NOT NULL,
+                    created_at TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_items (
+                    playlist_id INTEGER,
+                    media_id TEXT,
+                    added_at TEXT,
+                    FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                    FOREIGN KEY(media_id) REFERENCES media_items(id) ON DELETE CASCADE,
+                    PRIMARY KEY(playlist_id, media_id)
+                )
+            """)
+
+    def _migrate_from_json(self):
+        if self.json_backup_path.exists():
             try:
-                payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-                for raw_item in payload.get("items", []):
-                    item = MediaItem(**raw_item)
-                    if Path(item.file_path).exists(): self._items[item.id] = item
-            except: pass
-        self._sync_disk()
-
-    def _save(self):
-        payload = {"items": [asdict(item) for item in self._items.values() if Path(item.file_path).exists()]}
-        self.manifest_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+                payload = json.loads(self.json_backup_path.read_text(encoding="utf-8"))
+                items = payload.get("items", [])
+                with sqlite3.connect(self.db_path) as conn:
+                    for i in items:
+                        conn.execute("""
+                            INSERT OR IGNORE INTO media_items 
+                            (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (i["id"], i["file_name"], i["file_path"], i["stream_url"], i["size"], i["created_at"], i.get("source_url", ""), i.get("thumbnail_url", "")))
+                # Rename to .bak to prevent re-migration
+                self.json_backup_path.rename(self.json_backup_path.with_suffix(".json.bak"))
+                print(f"MIGRATED {len(items)} items to SQLite", file=sys.stderr)
+            except Exception as e:
+                print(f"Migration error: {e}", file=sys.stderr)
 
     def _sync_disk(self):
+        # Sync logic logic remains to reconcile files but we prioritize database items
         import unicodedata
         def norm(n: str) -> str: return unicodedata.normalize("NFD", n)
-        current_f = {norm(Path(i.file_path).name): i for i in self._items.values()}
-        for file in self.download_dir.glob("*.mp4"):
-            if norm(file.name) in current_f: continue
-            media_id = file.stem
-            self._items[media_id] = MediaItem(id=media_id, file_name=file.name, file_path=str(file.absolute()),
-                                              stream_url=f"/media/{media_id}", size=readable_size(file.stat().st_size),
-                                              created_at=datetime.fromtimestamp(file.stat().st_mtime, tz=timezone.utc).isoformat())
-        self._save()
+        
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute("SELECT file_path FROM media_items").fetchall()
+            db_paths = {norm(Path(r[0]).name) for r in rows}
+            
+            for file in self.download_dir.glob("*.mp4"):
+                if norm(file.name) in db_paths: continue
+                media_id = file.stem
+                conn.execute("""
+                    INSERT OR IGNORE INTO media_items (id, file_name, file_path, stream_url, size, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (media_id, file.name, str(file.absolute()), f"/media/{media_id}", 
+                      readable_size(file.stat().st_size), datetime.fromtimestamp(file.stat().st_mtime, tz=timezone.utc).isoformat()))
 
     def remove(self, media_id: str) -> bool:
         with self._lock:
-            if media_id in self._items:
-                item = self._items[media_id]
-                try:
-                    p = Path(item.file_path)
-                    if p.exists(): p.unlink()
-                except: pass
-                del self._items[media_id]
-                self._save()
-                return True
+            with sqlite3.connect(self.db_path) as conn:
+                row = conn.execute("SELECT file_path FROM media_items WHERE id = ?", (media_id,)).fetchone()
+                if row:
+                    try: Path(row[0]).unlink(missing_ok=True)
+                    except: pass
+                    conn.execute("DELETE FROM media_items WHERE id = ?", (media_id,))
+                    return True
         return False
 
     def list_items(self) -> List[Dict[str, Any]]:
         with self._lock:
-            items = sorted(self._items.values(), key=lambda i: i.created_at, reverse=True)
-            return [{"id": i.id, "fileName": i.file_name, "streamUrl": i.stream_url, "size": i.size, 
-                    "createdAt": i.created_at, "thumbnailUrl": i.thumbnail_url} for i in items]
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute("SELECT * FROM media_items ORDER BY created_at DESC").fetchall()
+                return [
+                    {
+                        "id": r["id"],
+                        "fileName": r["file_name"],
+                        "streamUrl": r["stream_url"],
+                        "size": r["size"],
+                        "createdAt": r["created_at"],
+                        "thumbnailUrl": r["thumbnail_url"]
+                    }
+                    for r in rows
+                ]
 
     def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "") -> MediaItem:
         with self._lock:
@@ -100,8 +153,12 @@ class MediaLibrary:
             item = MediaItem(id=media_id, file_name=final_p.name, file_path=str(final_p), stream_url=f"/media/{media_id}",
                             size=readable_size(final_p.stat().st_size), created_at=datetime.now(timezone.utc).isoformat(), 
                             source_url=source_url, thumbnail_url=thumbnail_url)
-            self._items[item.id] = item
-            self._save()
+            
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT INTO media_items (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url))
             return item
 
 class BridgeService:
@@ -122,6 +179,7 @@ class BridgeService:
     def resolve(self, url: str) -> Dict[str, Any]:
         yt = YouTube(url)
         thumb = self._stable_t(url, yt)
+        # Sort resolutions to match expected App order
         streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
         formats = []
         seen_res = set()
@@ -141,6 +199,7 @@ class BridgeService:
         thumb = self._stable_t(url, yt)
         stream = yt.streams.get_by_itag(int(format_id))
         if not stream: raise ValueError("Format not found")
+        
         audio = None if stream.is_progressive else yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
         if not stream.is_progressive and audio is None:
             raise ValueError("No compatible audio stream found")
@@ -178,33 +237,21 @@ class BridgeService:
                 a_p = Path(audio.download(output_path=str(target_dir), filename=f"{t_name}.audio.{audio.subtype or 'm4a'}"))
                 f_path = target_dir / f"{t_name}.mp4"
                 print(json.dumps({"event": "merging"}), file=sys.stderr, flush=True)
-                completed = subprocess.run(
-                    [
-                        ffmpeg,
-                        "-nostdin",
-                        "-y",
-                        "-i", str(v_p),
-                        "-i", str(a_p),
-                        "-c:v", "copy",
-                        "-c:a", "aac",
-                        "-movflags", "+faststart",
-                        str(f_path),
-                    ],
-                    capture_output=True,
-                    text=True,
-                    stdin=subprocess.DEVNULL,
-                )
-                v_p.unlink(missing_ok=True)
-                a_p.unlink(missing_ok=True)
-                if completed.returncode != 0:
-                    raise ValueError(completed.stderr.strip() or "ffmpeg merge failed")
+                completed = subprocess.run([
+                    ffmpeg, "-nostdin", "-y", "-i", str(v_p), "-i", str(a_p),
+                    "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", str(f_path)
+                ], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                v_p.unlink(missing_ok=True); a_p.unlink(missing_ok=True)
+                if completed.returncode != 0: raise ValueError(f"ffmpeg failed: {completed.stderr}")
             else:
-                # Fallback to the best progressive stream if ffmpeg is missing
                 fallback = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
                 f_path = Path(fallback.download(output_path=str(target_dir), filename=f"{t_name}.mp4"))
             
         item = self.library.add(source_url=url, file_path=f_path, thumbnail_url=thumb)
         return {"id": item.id, "streamUrl": item.stream_url, "fileName": item.file_name}
+
+    def list_items(self):
+        return {"items": self.library.list_items()}
 
 class RequestHandler(BaseHTTPRequestHandler):
     service: BridgeService
@@ -215,14 +262,16 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/health": self._send_json({"status": "ok"})
-        elif p == "/api/items": self._send_json({"items": self.service.library.list_items()})
+        elif p == "/api/items": self._send_json(self.service.list_items())
         elif p.startswith("/media/"):
             media_id = unquote(p.removeprefix("/media/"))
-            item = self.service.library._items.get(media_id)
-            if item and Path(item.file_path).exists():
-                self.send_response(200); self.send_header("Content-Type", "video/mp4"); self.end_headers()
-                with open(item.file_path, "rb") as f: shutil.copyfileobj(f, self.wfile)
-            else: self._send_json({"error": "not found"}, status=404)
+            # Fetch path from DB for serving
+            with sqlite3.connect(self.service.library.db_path) as conn:
+                row = conn.execute("SELECT file_path FROM media_items WHERE id = ?", (media_id,)).fetchone()
+                if row and Path(row[0]).exists():
+                    self.send_response(200); self.send_header("Content-Type", "video/mp4"); self.end_headers()
+                    with open(row[0], "rb") as f: shutil.copyfileobj(f, self.wfile)
+                else: self._send_json({"error": "not found"}, status=404)
     def do_POST(self):
         p = urlparse(self.path).path
         data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -241,7 +290,7 @@ def main():
         with ThreadingHTTPServer(("0.0.0.0", args.port), RequestHandler) as s: s.serve_forever()
     elif args.command == "resolve": print(json.dumps(service.resolve(args.url)))
     elif args.command == "download-progress": print(json.dumps(service.download_with_progress(args.url, args.format_id)))
-    elif args.command == "list": print(json.dumps({"items": service.library.list_items()}))
+    elif args.command == "list": print(json.dumps(service.list_items()))
     elif args.command == "delete": print(json.dumps({"status": "deleted" if service.library.remove(args.media_id) else "not_found"}))
 
 if __name__ == "__main__":
