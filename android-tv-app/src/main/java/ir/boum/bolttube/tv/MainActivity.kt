@@ -127,6 +127,7 @@ private class SidebarChannelAdapter(
             metaView.text = ""
             metaView.visibility = View.GONE
             itemView.isSelected = selected
+            itemView.nextFocusRightId = R.id.rowsContainer
         }
     }
 }

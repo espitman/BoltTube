@@ -166,7 +166,15 @@ class TvBrowseFragment : Fragment() {
                         }
                         renderChannelSections(sectionModels)
                         if (!state.channelContentLoading && sectionModels.isNotEmpty()) {
-                            channelScrollView.post { channelScrollView.scrollTo(0, 0) }
+                            channelScrollView.post { 
+                                channelScrollView.scrollTo(0, 0)
+                                // Auto-focus first item of first section
+                                val firstSection = channelSectionsContainer.getChildAt(0)
+                                val itemsView = firstSection?.findViewById<RecyclerView>(R.id.sectionItems)
+                                itemsView?.post {
+                                    itemsView.getChildAt(0)?.requestFocus()
+                                }
+                            }
                         }
                         channelEmptyView.text = if (state.channelContentLoading) "" else getString(R.string.empty_channel)
                         channelEmptyView.visibility = if (!state.channelContentLoading && sectionModels.isEmpty()) View.VISIBLE else View.GONE
@@ -194,7 +202,7 @@ class TvBrowseFragment : Fragment() {
 
     private fun renderChannelSections(sections: List<TvChannelSectionModel>) {
         channelSectionsContainer.removeAllViews()
-        sections.forEach { section ->
+        sections.forEachIndexed { index, section ->
             val sectionView = layoutInflater.inflate(
                 R.layout.item_channel_section,
                 channelSectionsContainer,
@@ -206,6 +214,7 @@ class TvBrowseFragment : Fragment() {
                 onClick = ::openVideo,
                 onFocusGained = { focusedCard -> ensureSectionVisible(sectionView, focusedCard) },
                 horizontalCardWidthPx = homeCardWidthPx(),
+                nextFocusUpId = if (index == 0) R.id.channelBackButton else View.NO_ID,
             )
 
             titleView.text = section.title
@@ -232,6 +241,7 @@ private class TvVideoCardAdapter(
     private val onClick: (VideoItem) -> Unit,
     private val onFocusGained: ((View) -> Unit)? = null,
     private val horizontalCardWidthPx: Int? = null,
+    private val nextFocusUpId: Int = View.NO_ID,
 ) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
@@ -257,6 +267,9 @@ private class TvVideoCardAdapter(
                 horizontalCardWidthPx,
                 RecyclerView.LayoutParams.WRAP_CONTENT,
             )
+        }
+        if (nextFocusUpId != View.NO_ID) {
+            view.nextFocusUpId = nextFocusUpId
         }
         return VideoViewHolder(view, onClick, onFocusGained)
     }

@@ -62,6 +62,7 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
+                android:nextFocusDown="@id/channelScrollView"
                 android:padding="6dp"
                 android:src="@drawable/ic_back"
                 android:tint="@android:color/white" />

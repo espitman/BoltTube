@@ -59,6 +59,7 @@
                 android:id="@+id/sidebarHome"
                 style="@style/SidebarItem"
                 android:drawableStart="@drawable/ic_home"
+                android:nextFocusRight="@id/rowsContainer"
                 android:text="Home" />
 
             <TextView
@@ -94,6 +95,7 @@
                 android:id="@+id/sidebarSettings"
                 style="@style/SidebarItem"
                 android:drawableStart="@drawable/ic_settings"
+                android:nextFocusRight="@id/rowsContainer"
                 android:text="Settings" />
         </LinearLayout>
     </ScrollView>
