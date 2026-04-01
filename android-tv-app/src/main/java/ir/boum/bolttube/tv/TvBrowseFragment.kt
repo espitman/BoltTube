@@ -278,6 +278,9 @@ class TvBrowseFragment : Fragment() {
                 onFocusGained = { focusedCard -> ensureSectionVisible(sectionView, focusedCard) },
                 horizontalCardWidthPx = homeCardWidthPx(),
                 nextFocusUpId = if (index == 0) R.id.channelBackButton else View.NO_ID,
+                nextFocusRightProvider = { pos -> 
+                    if (pos == (section.items.size - 1)) R.id.sectionSeeAll else View.NO_ID 
+                },
             )
 
             titleView.text = section.title
@@ -311,6 +314,7 @@ private class TvVideoCardAdapter(
     private val horizontalCardWidthPx: Int? = null,
     private val nextFocusUpId: Int = View.NO_ID,
     private val nextFocusUpProvider: ((Int) -> Int)? = null,
+    private val nextFocusRightProvider: ((Int) -> Int)? = null,
 ) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
@@ -342,6 +346,10 @@ private class TvVideoCardAdapter(
         val upId = nextFocusUpProvider?.invoke(position) ?: nextFocusUpId
         if (upId != View.NO_ID) {
             holder.itemView.nextFocusUpId = upId
+        }
+        val rightId = nextFocusRightProvider?.invoke(position) ?: View.NO_ID
+        if (rightId != View.NO_ID) {
+            holder.itemView.nextFocusRightId = rightId
         }
     }
 
