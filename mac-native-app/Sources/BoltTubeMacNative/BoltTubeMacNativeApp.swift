@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import AVKit
 
-private let fixedWindowSize = NSSize(width: 1080, height: 746)
+private let fixedWindowSize = NSSize(width: 1080, height: 535)
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    // Window resizing is now locked to 1080x555
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
         fixedWindowSize
     }

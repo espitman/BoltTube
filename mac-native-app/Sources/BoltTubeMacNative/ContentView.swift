@@ -67,7 +67,7 @@ struct ContentView: View {
         .animation(.spring(duration: 0.4, bounce: 0.1), value: controller.activeManagementTab)
         .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
         .onChange(of: playingItem) { _, v in if let i = v { player = AVPlayer(url: controller.localURL(for: i)); player?.play() } else { player?.pause(); player = nil } }
-        .frame(minWidth: 1080, minHeight: 746).background(Color(red: 0.98, green: 0.98, blue: 1.0)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).ignoresSafeArea()
+        .frame(minWidth: 1080, minHeight: 535).background(Color(red: 0.98, green: 0.98, blue: 1.0)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).ignoresSafeArea()
         .task { await controller.refreshLibrary(); await controller.refreshPlaylists(); await controller.refreshChannels() }
         .onChange(of: controller.videoURL) { _, _ in controller.scheduleQualityRefresh() }
         .alert("Confirm Action", isPresented: Binding(get: { itemToDelete != nil || playlistToDelete != nil || channelToDelete != nil }, set: { if !$0 { itemToDelete = nil; playlistToDelete = nil; channelToDelete = nil } })) {
