@@ -185,7 +185,7 @@ class TvBrowseFragment : Fragment() {
                                     .into(playlistHeroImage)
                             }
 
-                            val items = state.playlistContent.map(::mediaToVideoItem)
+                            val items = state.playlistContent.sortedByDescending { it.createdAt }.map(::mediaToVideoItem)
                             playlistAdapter.submit(items)
                             if (!state.playlistLoading && items.isNotEmpty()) {
                                 playlistGrid.post {
