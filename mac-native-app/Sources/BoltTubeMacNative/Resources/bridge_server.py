@@ -94,6 +94,19 @@ def get_playlist_items(p_id):
     if not library: return jsonify({"items": []})
     return jsonify({"items": library.repo.get_playlist_items(p_id)})
 
+@app.route("/api/channels/<int:channel_id>/content")
+def get_channel_content(channel_id):
+    if not library: return jsonify({"items": []})
+    playlists = library.repo.get_channel_playlists(channel_id)
+    content = []
+    for p in playlists:
+        items = library.repo.get_playlist_items(p["id"])[:10]
+        content.append({
+            "playlist": p,
+            "items": items
+        })
+    return jsonify({"content": content})
+
 # --- NEW: Channels API ---
 @app.route("/api/channels")
 def list_channels():

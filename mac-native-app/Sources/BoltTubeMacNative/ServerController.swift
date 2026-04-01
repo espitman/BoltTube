@@ -41,6 +41,8 @@ private final class DownloadStreamState: @unchecked Sendable {
 struct RemoteFormat: Codable, Identifiable, Hashable { let id: String; let title: String; let details: String; let filesize: String }
 struct DownloadTask: Identifiable, Hashable { let id: String; let title: String; var status: String; var progress: Double }
 struct ResolveResponse: Codable { let title: String; let thumbnailUrl: String; let durationSeconds: Int; let formats: [RemoteFormat] }
+struct ChannelContent: Codable, Identifiable, Hashable { var id: Int { playlist.id }; let playlist: Playlist; let items: [MediaLibraryItem] }
+struct ChannelContentResponse: Codable { let content: [ChannelContent] }
 struct HealthResponse: Codable { let status: String; let port: Int; let downloadDir: String }
 
 @Observable
@@ -49,8 +51,8 @@ final class ServerController {
     var videoURL = ""; var resolvedTitle = ""; var resolvedThumbnailUrl = ""; var resolvedDurationSeconds: Int = 0; var lastDownloadedFileName = ""; var formats: [RemoteFormat] = []; var selectedFormatID = "best"
     var libraryItems: [MediaLibraryItem] = []; var playlists: [Playlist] = []; var channels: [Channel] = []; var refreshingIDs: Set<String> = []; var logs: String = ""
     var selectedPlaylist: Playlist? = nil; var playlistItems: [MediaLibraryItem] = []; var isFetchingPlaylistItems = false
-    var selectedChannel: Channel? = nil; var channelPlaylists: [Playlist] = []; var isFetchingChannelPlaylists = false
-    var activeManagementTab: Int = 0 // 0: Playlists, 1: Channels
+    var selectedChannel: Channel? = nil; var channelContent: [ChannelContent] = []; var isFetchingChannelContent = false
+    var activeManagementTab: Int = 0 // 0: Channels, 1: Playlists
 
     var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingQualities = false; var isDownloading = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
     private var shareServerProcess: Process?; private var shareServerOutputPipe: Pipe?; private var qualityRefreshTask: Task<Void, Never>?; private var sleepAssertionID: IOPMAssertionID = 0; private var activeDownloadProcess: Process?; private var activeDownloadTempName: String = ""; private var lastProgressBytes: Double = 0; private var lastProgressTime: Date = Date()
@@ -114,6 +116,21 @@ final class ServerController {
         guard let url = URL(string: "\(serverURLDisplay)/api/channels/add") else { return }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body: [String: Any] = ["channelId": channelID, "playlistId": playlistID]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         do { _ = try await URLSession.shared.data(for: request); await refreshChannels() } catch { appendLog("Add playlist to channel failed.") }
+    }
+
+    func fetchChannelContent(id: Int) async {
+        isFetchingChannelContent = true; channelContent = []
+        guard let url = URL(string: "\(serverURLDisplay)/api/channels/\(id)/content") else { isFetchingChannelContent = false; return }
+        do { 
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let decoded = try decoder.decode(ChannelContentResponse.self, from: data)
+            channelContent = decoded.content
+            appendLog("Channel content loaded: \(channelContent.count) playlists.")
+        } catch { 
+            appendLog("Fetch channel content failed: \(error.localizedDescription)") 
+        }
+        isFetchingChannelContent = false
     }
 
     func chooseDownloadDirectory() {

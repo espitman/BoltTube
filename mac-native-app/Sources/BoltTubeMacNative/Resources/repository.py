@@ -189,3 +189,19 @@ class MediaRepository:
     def delete_channel(self, channel_id: int):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM channels WHERE id = ?", (channel_id,))
+
+    def get_channel_playlists(self, channel_id: int) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("""
+                SELECT p.*, (SELECT COUNT(*) FROM playlist_items WHERE playlist_id = p.id) as item_count 
+                FROM playlists p 
+                JOIN channel_playlists cp ON p.id = cp.playlist_id 
+                WHERE cp.channel_id = ? 
+                ORDER BY p.created_at DESC
+            """, (channel_id,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def remove_playlist_from_channel(self, channel_id: int, playlist_id: int):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("DELETE FROM channel_playlists WHERE channel_id = ? AND playlist_id = ?", (channel_id, playlist_id))
