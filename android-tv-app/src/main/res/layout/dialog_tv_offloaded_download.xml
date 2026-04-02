@@ -11,6 +11,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:fontFamily="@font/vazir"
         android:text="Download Offloaded Video"
         android:textColor="@color/tv_text"
         android:textSize="20sp"
@@ -40,6 +41,7 @@
                 android:id="@+id/downloadDialogTitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="@font/vazir"
                 android:maxLines="3"
                 android:textColor="@color/tv_text"
                 android:textSize="18sp"
@@ -63,6 +65,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="10dp"
+                    android:fontFamily="@font/vazir"
                     android:textColor="@color/tv_muted"
                     android:textSize="14sp" />
             </LinearLayout>
@@ -73,6 +76,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
+        android:fontFamily="@font/vazir"
         android:text="Quality"
         android:textColor="@color/tv_muted"
         android:textSize="14sp"
@@ -117,6 +121,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
+            android:fontFamily="@font/vazir"
             android:text="0%"
             android:textColor="@color/tv_focus"
             android:textSize="14sp"
@@ -137,6 +142,7 @@
             android:layout_height="48dp"
             android:minWidth="120dp"
             android:background="@drawable/bg_tv_dialog_secondary_button"
+            android:fontFamily="@font/vazir"
             android:textColor="@color/tv_text"
             android:text="Cancel" />
 
@@ -147,6 +153,7 @@
             android:layout_marginStart="12dp"
             android:minWidth="180dp"
             android:background="@drawable/bg_tv_dialog_primary_button"
+            android:fontFamily="@font/vazir"
             android:textColor="@color/tv_white"
             android:text="Start Download" />
     </LinearLayout>

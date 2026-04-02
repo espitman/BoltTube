@@ -79,6 +79,7 @@
                     android:id="@+id/channelBadge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/vazir"
                     android:text="CHANNEL"
                     android:textColor="#B3FFFFFF"
                     android:textSize="9sp"
@@ -89,6 +90,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
+                    android:fontFamily="@font/vazir"
                     android:textColor="@android:color/white"
                     android:textSize="22sp"
                     android:textStyle="bold" />
@@ -181,6 +183,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/vazir"
                     android:text="PLAYLIST"
                     android:textColor="#B3FFFFFF"
                     android:textSize="9sp"
@@ -190,6 +193,7 @@
                     android:id="@+id/playlistTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="@font/vazir"
                     android:textColor="@android:color/white"
                     android:textSize="22sp"
                     android:textStyle="bold" />
@@ -213,6 +217,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
+        android:fontFamily="@font/vazir"
         android:text="@string/empty_library"
         android:textColor="@color/tv_muted"
         android:textSize="18sp"

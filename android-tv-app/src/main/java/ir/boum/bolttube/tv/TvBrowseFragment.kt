@@ -442,14 +442,13 @@ private class TvVideoCardAdapter(
             uploadBadgeView.visibility = if (item.isOffloaded) View.VISIBLE else View.GONE
             imageView.alpha = if (item.isOffloaded) 0.5f else 1f
 
-            if (isPersian(item.title)) {
-                try {
-                    val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, R.font.vazir)
-                    titleView.typeface = vazir
-                } catch (_: Exception) {
-                    titleView.setTypeface(null, android.graphics.Typeface.BOLD)
-                }
-            } else {
+            try {
+                val vazir = androidx.core.content.res.ResourcesCompat.getFont(itemView.context, R.font.vazir)
+                titleView.typeface = vazir
+                dateView.typeface = vazir
+                badgeView.typeface = vazir
+                uploadBadgeView.typeface = vazir
+            } catch (_: Exception) {
                 titleView.setTypeface(null, android.graphics.Typeface.BOLD)
             }
 
