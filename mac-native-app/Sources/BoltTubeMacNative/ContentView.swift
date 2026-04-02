@@ -7,12 +7,7 @@ enum AppTab {
 
 extension Font {
     static func vazir(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        if NSFont(name: "Vazirmatn", size: size) != nil {
-            return .custom("Vazirmatn", size: size).weight(weight)
-        } else if NSFont(name: "Vazir", size: size) != nil {
-            return .custom("Vazir", size: size).weight(weight)
-        }
-        return .system(size: size, weight: weight)
+        return .custom("Vazirmatn", size: size).weight(weight)
     }
 }
 
@@ -45,6 +40,7 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let _ = print("DEBUG: body re-render, currentTab=\(currentTab), items=\(controller.libraryItems.count)")
             let metrics = LayoutMetrics(containerWidth: proxy.size.width)
             HStack(spacing: 0) {
                 sidebar(metrics: metrics)
@@ -68,7 +64,12 @@ struct ContentView: View {
         .animation(.spring(duration: 0.5, bounce: 0.1), value: playingItem)
         .onChange(of: playingItem) { _, v in if let i = v { player = AVPlayer(url: controller.localURL(for: i)); player?.play() } else { player?.pause(); player = nil } }
         .frame(minWidth: 1080, minHeight: 535).background(Color(red: 0.98, green: 0.98, blue: 1.0)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous)).ignoresSafeArea()
-        .task { await controller.refreshLibrary(); await controller.refreshPlaylists(); await controller.refreshChannels() }
+        .task { 
+            print("DEBUG: Final task refresh triggered.")
+            await controller.refreshLibrary()
+            await controller.refreshPlaylists()
+            await controller.refreshChannels() 
+        }
         .onChange(of: controller.videoURL) { _, _ in controller.scheduleQualityRefresh() }
         .alert("Confirm Action", isPresented: Binding(get: { itemToDelete != nil || playlistToDelete != nil || channelToDelete != nil }, set: { if !$0 { itemToDelete = nil; playlistToDelete = nil; channelToDelete = nil } })) {
             Button("Delete", role: .destructive) {
@@ -120,10 +121,13 @@ struct ContentView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 12) {
                         ForEach(controller.libraryItems.prefix(5)) { item in
-                            RecentCardCompact(controller: controller, item: item, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                            RecentCardCompact(controller: controller, item: item, onPlay: { if item.isDownloaded ?? true { playingItem = item } else { controller.videoURL = item.sourceUrl ?? ""; controller.scheduleQualityRefresh() } }, onDelete: { itemToDelete = item })
                                 .contextMenu {
                                     Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
                                     Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
+                                    if item.isDownloaded ?? true {
+                                        Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
+                                    }
                                     Divider(); Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) }
                                 }
                         }
@@ -141,11 +145,17 @@ struct ContentView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
                     ForEach(controller.libraryItems) { item in
-                        VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
+                        let _ = print("DEBUG: Rendering item \(item.id)")
+                        VideoCard(item: item, controller: controller, 
+                                 onPlay: { if item.isDownloaded ?? true { playingItem = item } else { controller.videoURL = item.sourceUrl ?? ""; controller.scheduleQualityRefresh() } }, 
+                                 onDelete: { itemToDelete = item })
                             .contextMenu {
                                 Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
                                 Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
-                                Divider(); Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) } 
+                                if item.isDownloaded ?? true {
+                                    Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
+                                }
+                                Divider(); Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) }
                             }
                     }
                 }.padding(.horizontal, 40).padding(.bottom, 40)
@@ -245,11 +255,36 @@ struct ContentView: View {
                     }.frame(maxWidth: .infinity).clipped()
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 24)], spacing: 32) {
-                        ForEach(controller.playlistItems) { item in VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item }) }
+                        ForEach(controller.playlistItems) { item in 
+                            videoCardWithMenu(item: item, playlistID: playlist.id)
+                        }
                     }.padding(.horizontal, 40).padding(.vertical, 40)
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func videoCardWithMenu(item: MediaLibraryItem, playlistID: Int? = nil) -> some View {
+        VideoCard(item: item, controller: controller, 
+                 onPlay: { if item.isDownloaded ?? true { playingItem = item } else { controller.videoURL = item.sourceUrl ?? ""; controller.scheduleQualityRefresh() } }, 
+                 onDelete: { 
+                     if let pid = playlistID { Task { await controller.removeFromPlaylist(playlistID: pid, mediaID: item.id) } }
+                     else { itemToDelete = item }
+                 })
+            .contextMenu {
+                Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
+                Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
+                if item.isDownloaded ?? true {
+                    Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
+                }
+                if let pid = playlistID {
+                    Divider(); Button(role: .destructive) { Task { await controller.removeFromPlaylist(playlistID: pid, mediaID: item.id) } } label: { Label("Remove from Playlist", systemImage: "trash").font(.vazir(size: 13)) }
+                } else {
+                    Divider(); Button(role: .destructive) { itemToDelete = item } label: { Label("Delete", systemImage: "trash").font(.vazir(size: 13)) }
+                }
+            }
+            .frame(maxWidth: .infinity)
     }
 
     private func channelDetailView(channel: Channel) -> some View {
@@ -303,10 +338,10 @@ struct ContentView: View {
                                     
                                     ScrollView(.horizontal, showsIndicators: false) {
                                         HStack(spacing: 24) {
-                                            ForEach(section.items) { item in
-                                                VideoCard(item: item, controller: controller, onPlay: { playingItem = item }, onDelete: { itemToDelete = item })
-                                                    .frame(width: 240)
-                                            }
+                                        ForEach(section.items) { item in 
+                                            videoCardWithMenu(item: item)
+                                                .frame(width: 240)
+                                        }
                                         }.padding(.horizontal, 40)
                                     }
                                 }
@@ -401,14 +436,22 @@ struct SidebarIconButton: View {
 
 struct VideoCard: View {
     let item: MediaLibraryItem; var controller: ServerController; let onPlay: () -> Void; let onDelete: () -> Void
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button(action: onPlay) {
-                ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.black.overlay { ProgressView().scaleEffect(0.5) } } } } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(Color.white.opacity(0.2)).font(.system(size: 32)) } } }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
+                ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.black.overlay { ProgressView().scaleEffect(0.5) } } } } else { Color.black.overlay { Image(systemName: "play.fill").foregroundStyle(Color.white.opacity(0.2)).font(.system(size: 32)) } } 
+                    if !(item.isDownloaded ?? true) {
+                        Color.white.opacity(0.6)
+                        Image(systemName: "icloud.and.arrow.down").font(.system(size: 32)).foregroundStyle(slate900).opacity(0.8)
+                    }
+                }.frame(height: 140).clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: Color.black.opacity(0.1), radius: 8, y: 4)
                 .overlay(alignment: .bottomTrailing) { if (item.duration ?? 0) > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 6)).padding(8) } }
                 .overlay { if controller.refreshingIDs.contains(item.id) { ZStack { Color.black.opacity(0.4); ProgressView().controlSize(.small).tint(Color.white).scaleEffect(0.8) }.clipShape(RoundedRectangle(cornerRadius: 12)) } }
             }.buttonStyle(.plain)
-            VStack(alignment: .leading, spacing: 4) { Text(item.title ?? "Untitled").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)).lineLimit(2) }.padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 4) { Text(item.title ?? "Untitled").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15).opacity((item.isDownloaded ?? true) ? 1.0 : 0.5)).lineLimit(2) }.padding(.horizontal, 4)
         }
     }
     private func formatDuration(_ s: Int?) -> String { let ss = s ?? 0; return String(format: "%d:%02d", ss/60, ss%60) }
@@ -426,10 +469,18 @@ struct PlaylistCard: View {
 
 struct RecentCardCompact: View {
     var controller: ServerController; let item: MediaLibraryItem; let onPlay: () -> Void; let onDelete: () -> Void
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onPlay) { ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) } }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(alignment: .bottomTrailing) { if (item.duration ?? 0) > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 8, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 2).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 4)).padding(4) } } }.buttonStyle(.plain)
-            Button(action: onPlay) { Text(item.title ?? "Untitled").font(.vazir(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
+            Button(action: onPlay) { ZStack { if let thumb = item.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)) } 
+                if !(item.isDownloaded ?? true) {
+                    Color.white.opacity(0.5)
+                    Image(systemName: "cloud").font(.system(size: 14)).foregroundStyle(slate900).opacity(0.6)
+                }
+            }.frame(width: 80, height: 50).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(alignment: .bottomTrailing) { if (item.duration ?? 0) > 0 { Text(formatDuration(item.duration)).font(.vazir(size: 8, weight: .bold)).padding(.horizontal, 4).padding(.vertical, 2).background(Color.black.opacity(0.8)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 4)).padding(4) } } }.buttonStyle(.plain)
+            Button(action: onPlay) { Text(item.title ?? "Untitled").font(.vazir(size: 12, weight: .semibold)).foregroundStyle(Color(red: 0.1, green: 0.15, blue: 0.25).opacity((item.isDownloaded ?? true) ? 1.0 : 0.5)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(.plain)
             Button { onDelete() } label: { Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Color.red.opacity(0.7)).padding(6) }.buttonStyle(.plain)
         }.padding(.vertical, 4)
     }

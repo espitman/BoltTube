@@ -56,7 +56,8 @@ class MediaLibrary:
                     "created_at": str(r.get("created_at") or ""),
                     "thumbnail_url": r.get("thumbnail_url"),
                     "source_url": str(r.get("source_url") or ""),
-                    "duration": duration
+                    "duration": duration,
+                    "is_downloaded": bool(r.get("is_downloaded", 1))
                 })
             return result
 
@@ -117,7 +118,16 @@ class MediaLibrary:
                 return True
         return False
 
-    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "") -> MediaItem:
+    def offload(self, media_id: str) -> bool:
+        with self._lock:
+            item = self.repo.get_item(media_id)
+            if item:
+                Path(item["file_path"]).unlink(missing_ok=True)
+                self.repo.set_download_status(media_id, 0)
+                return True
+        return False
+
+    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1) -> MediaItem:
         with self._lock:
             media_id = f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
             final_p = file_path.with_name(f"{media_id}{file_path.suffix}")

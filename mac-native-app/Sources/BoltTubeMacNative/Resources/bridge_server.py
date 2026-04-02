@@ -192,6 +192,7 @@ def get_playlist_items(p_id):
         "thumbnail_url": item.get("thumbnail_url"),
         "duration": item.get("duration", 0),
         "source_url": str(item.get("source_url") or ""),
+        "is_downloaded": bool(item.get("is_downloaded", 1)),
         "title": str(item.get("title") or item["file_name"].replace(".mp4", "")),
     } for item in raw_items]
     return jsonify({"items": items})
@@ -212,6 +213,7 @@ def get_channel_content(channel_id):
             "created_at": str(item.get("created_at") or ""),
             "thumbnail_url": item.get("thumbnail_url"),
             "duration": item.get("duration", 0),
+            "is_downloaded": bool(item.get("is_downloaded", 1)),
             "source_url": str(item.get("source_url") or ""),
         } for item in raw_items]
         content.append({
@@ -262,6 +264,11 @@ def update_channel():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
 
+@app.route("/api/list")
+def list_library_v2():
+    if not library: return jsonify({"items": []})
+    return jsonify({"items": library.list_items()})
+
 @app.route("/media/<media_id>")
 def serve_video(media_id):
     if not library: return "Not initialized", 500
@@ -291,6 +298,12 @@ def download():
 @app.route("/api/delete", methods=["POST"])
 def delete():
     return jsonify({"status": "deleted" if library.remove(request.json["id"]) else "not_found"})
+
+@app.route("/api/offload", methods=["POST"])
+def offload():
+    if not library: return jsonify({"error": "not init"}), 500
+    res = library.offload(request.json["id"])
+    return jsonify({"status": "offloaded" if res else "not_found"})
 
 @app.route("/api/refresh-metadata", methods=["POST"])
 def refresh():

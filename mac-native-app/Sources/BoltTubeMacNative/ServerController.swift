@@ -16,7 +16,7 @@ private func bundledResourceURL(named name: String, withExtension ext: String) -
 }
 
 struct MediaLibraryItem: Codable, Identifiable, Hashable {
-    let id: String; let fileName: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?
+    let id: String; let fileName: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?; let isDownloaded: Bool?
 }
 
 struct Playlist: Codable, Identifiable, Hashable {
@@ -168,9 +168,13 @@ final class ServerController {
     }
 
     func deleteItem(id: String) async {
-        guard let url = URL(string: "\(serverURLDisplay)/api/delete") else { return }
-        var request = URLRequest(url: url); request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Content-Type"); let body: [String: String] = ["id": id]; request.httpBody = try? JSONEncoder().encode(body)
-        do { let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; appendLog("Deleted item: \(id)"); await refreshLibrary() } catch { appendLog("Network error during delete.") }
+        let request = buildPOSTRequest(endpoint: "/api/delete", body: ["id": id])
+        do { let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; await refreshLibrary() } catch { appendLog("Delete failed.") }
+    }
+    
+    func offloadItem(id: String) async {
+        let request = buildPOSTRequest(endpoint: "/api/offload", body: ["id": id])
+        do { let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; await refreshLibrary() } catch { appendLog("Offload failed.") }
     }
 
     func refreshMetadata(id: String) async {
@@ -182,7 +186,21 @@ final class ServerController {
 
     func localURL(for item: MediaLibraryItem) -> URL { return URL(string: "\(lanURLDisplay)\(item.streamUrl ?? "")")! }
     func refreshLibrary() async {
-        do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "list", "--download-dir", downloadDirectory.path], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(MediaLibraryResponse.self, from: data); libraryItems = decoded.items } catch { print("Library Refresh Error: \(error)"); appendLog("Library refresh failed.") }
+        guard let url = URL(string: "\(serverURLDisplay)/api/list") else { return }
+        do { 
+            print("DEBUG: Refreshing library from \(url)...")
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { 
+                print("DEBUG: Library refresh server error: \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                return 
+            }
+            let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let decoded = try decoder.decode(MediaLibraryResponse.self, from: data)
+            print("DEBUG: Library refreshed with \(decoded.items.count) items.")
+            await MainActor.run { libraryItems = decoded.items }
+        } catch { 
+            print("DEBUG: Library Refresh Error: \(error)"); appendLog("Library refresh failed.") 
+        }
     }
 
     func refreshPlaylists() async {
@@ -215,9 +233,14 @@ final class ServerController {
     }
 
     func deletePlaylist(id: Int) async {
-        guard let url = URL(string: "\(serverURLDisplay)/api/playlists/delete") else { return }
-        var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); let body = ["id": id]; request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let request = buildPOSTRequest(endpoint: "/api/playlists/delete", body: ["id": id])
         do { _ = try await URLSession.shared.data(for: request); await refreshPlaylists() } catch { appendLog("Delete playlist failed.") }
+    }
+
+    func removeFromPlaylist(playlistID: Int, mediaID: String) async {
+        let body: [String: Any] = ["playlist_id": playlistID, "media_id": mediaID]
+        let request = buildPOSTRequest(endpoint: "/api/playlists/remove", body: body)
+        do { _ = try await URLSession.shared.data(for: request); await fetchPlaylistItems(id: playlistID) } catch { appendLog("Remove from playlist failed.") }
     }
 
     func startShareServer() async {
@@ -244,6 +267,7 @@ final class ServerController {
     private var requirementsURL: URL { guard let url = bundledResourceURL(named: "requirements", withExtension: "txt") else { fatalError() }; return url }
     private var bridgeScriptURL: URL { guard let url = bundledResourceURL(named: "bridge_server", withExtension: "py") else { fatalError() }; return url }
     private func runJSONCommand(arguments: [String], logOutput: Bool = true) async throws -> Data { try await Task.detached { [venvPythonURL] in let process = Process(); let outputPipe = Pipe(); let errorPipe = Pipe(); process.executableURL = venvPythonURL; process.arguments = arguments; process.environment = Self.staticMergedEnvironment(extra: ["PYTHONUNBUFFERED": "1"]); process.standardOutput = outputPipe; process.standardError = errorPipe; try process.run(); let outputData = try outputPipe.fileHandleForReading.readToEnd() ?? Data(); process.waitUntilExit(); if process.terminationStatus != 0 { throw NSError(domain: "BoltTube", code: Int(process.terminationStatus)) }; return outputData }.value }
+    private func buildPOSTRequest(endpoint: String, body: [String: Any]) -> URLRequest { guard let url = URL(string: "\(serverURLDisplay)\(endpoint)") else { fatalError() }; var request = URLRequest(url: url); request.httpMethod = "POST"; request.addValue("application/json", forHTTPHeaderField: "Content-Type"); request.httpBody = try? JSONSerialization.data(withJSONObject: body); return request }
     private func runDownloadCommand(arguments: [String]) async throws -> Data { try await withCheckedThrowingContinuation { continuation in let process = Process(); let outputPipe = Pipe(); let errorPipe = Pipe(); let state = DownloadStreamState(); process.executableURL = venvPythonURL; process.arguments = arguments; process.environment = mergedEnvironment(extra: ["PYTHONUNBUFFERED": "1"]); process.standardOutput = outputPipe; process.standardError = errorPipe; errorPipe.fileHandleForReading.readabilityHandler = { handle in let data = handle.availableData; guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }; let lines = state.append(text: text); Task { @MainActor [weak self] in for l in lines { self?.handleDownloadProgressLine(l) } } }; process.terminationHandler = { _ in Task { @MainActor [weak self] in self?.activeDownloadProcess = nil; self?.isDownloading = false; do { let d = try outputPipe.fileHandleForReading.readToEnd() ?? Data(); if state.markResumed() { continuation.resume(returning: d) } } catch { if state.markResumed() { continuation.resume(throwing: error) } } } }; do { try process.run(); Task { @MainActor [weak self] in self?.activeDownloadProcess = process } } catch { if state.markResumed() { continuation.resume(throwing: error) } } } }
     private func runCommand(executable: URL, arguments: [String]) async throws { try await Task.detached { let process = Process(); let pipe = Pipe(); process.executableURL = executable; process.arguments = arguments; process.environment = Self.staticMergedEnvironment(); process.standardOutput = pipe; process.standardError = pipe; try process.run(); process.waitUntilExit(); if process.terminationStatus != 0 { throw NSError(domain: "BoltTube", code: Int(process.terminationStatus)) } }.value }
     private func mergedEnvironment(extra: [String: String] = [:]) -> [String: String] { Self.staticMergedEnvironment(extra: extra) }

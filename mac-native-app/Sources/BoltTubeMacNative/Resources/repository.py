@@ -15,6 +15,7 @@ class MediaItem:
     thumbnail_url: str = ""
     duration: int = 0
     title: str = ""
+    is_downloaded: int = 1
 
 class MediaRepository:
     def __init__(self, db_path: Path):
@@ -34,7 +35,8 @@ class MediaRepository:
                     source_url TEXT,
                     thumbnail_url TEXT,
                     duration INTEGER DEFAULT 0,
-                    title TEXT
+                    title TEXT,
+                    is_downloaded INTEGER DEFAULT 1
                 )
             """)
             conn.execute("""
@@ -67,6 +69,8 @@ class MediaRepository:
             """)
             try: conn.execute("ALTER TABLE playlists ADD COLUMN thumbnail_url TEXT")
             except sqlite3.OperationalError: pass
+            try: conn.execute("ALTER TABLE media_items ADD COLUMN is_downloaded INTEGER DEFAULT 1")
+            except sqlite3.OperationalError: pass
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlist_items (
@@ -86,9 +90,9 @@ class MediaRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO media_items 
-                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title))
+                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title, getattr(item, 'is_downloaded', 1)))
 
     def delete_item(self, media_id: str):
         with sqlite3.connect(self.db_path) as conn:
@@ -97,13 +101,13 @@ class MediaRepository:
     def get_item(self, media_id: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title FROM media_items WHERE id = ?", (media_id,)).fetchone()
+            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded FROM media_items WHERE id = ?", (media_id,)).fetchone()
             return dict(row) if row else None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title FROM media_items ORDER BY created_at DESC").fetchall()
+            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]
 
     def create_playlist(self, name: str, thumbnail_url: Optional[str] = None) -> int:
@@ -152,6 +156,10 @@ class MediaRepository:
     def delete_playlist(self, playlist_id: int):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM playlists WHERE id = ?", (playlist_id,))
+
+    def set_download_status(self, media_id: str, status: int):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("UPDATE media_items SET is_downloaded = ? WHERE id = ?", (status, media_id))
 
     # --- NEW: Channels ---
     def create_channel(self, name: str, thumb: Optional[str] = None) -> int:
