@@ -438,21 +438,113 @@ struct RecentCardCompact: View {
 
 struct AddToPlaylistModal: View {
     @Environment(\.dismiss) var dismiss; var controller: ServerController; let item: MediaLibraryItem
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+    
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("Add to Playlist").font(.vazir(size: 16, weight: .bold)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 14)).foregroundStyle(Color.gray) }.buttonStyle(.plain) }.padding(24); Divider()
-            ScrollView { VStack(spacing: 8) { if controller.playlists.isEmpty { Text("No playlists found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.playlists) { p in Button { Task { await controller.addToPlaylist(playlistID: p.id, mediaID: item.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = p.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(p.name ?? "Untitled").font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.circle").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
-        }.frame(width: 320, height: 400).background(Color.white)
+            HStack { 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add to Playlist").font(.vazir(size: 18, weight: .black)).foregroundStyle(slate900)
+                    Text("Choose a collection for this video").font(.vazir(size: 11, weight: .medium)).foregroundStyle(slate600)
+                }
+                Spacer()
+                Button { dismiss() } label: { 
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(Color.gray.opacity(0.3)) 
+                }.buttonStyle(.plain) 
+            }.padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
+            
+            Divider().opacity(0.1)
+            
+            ScrollView { 
+                VStack(spacing: 10) { 
+                    if controller.playlists.isEmpty { 
+                        VStack(spacing: 12) {
+                            Image(systemName: "music.note.list").font(.system(size: 32)).foregroundStyle(Color.gray.opacity(0.2))
+                            Text("No playlists found").font(.vazir(size: 14)).foregroundStyle(slate600.opacity(0.6))
+                        }.padding(80) 
+                    } else { 
+                        ForEach(controller.playlists) { p in 
+                            Button { Task { await controller.addToPlaylist(playlistID: p.id, mediaID: item.id); dismiss() } } label: { 
+                                HStack(spacing: 14) { 
+                                    ZStack { 
+                                        if let thumb = p.thumbnailUrl, !thumb.isEmpty { 
+                                            AsyncImage(url: URL(string: thumb)) { phase in 
+                                                if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } 
+                                                else { Color.gray.opacity(0.1) } 
+                                            } 
+                                        } else { Color.gray.opacity(0.1).overlay { Image(systemName: "music.note.list").font(.system(size: 12)).foregroundStyle(Color.gray.opacity(0.4)) } } 
+                                    }.frame(width: 48, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(p.name ?? "Untitled").font(.vazir(size: 15, weight: .bold)).foregroundStyle(slate900)
+                                        Text("\(p.itemCount) Videos").font(.vazir(size: 11, weight: .medium)).foregroundStyle(slate600.opacity(0.7))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.circle.fill").foregroundStyle(Color.blue.opacity(0.8)).font(.system(size: 18))
+                                }.padding(.horizontal, 16).padding(.vertical, 14).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 12)) 
+                            }.buttonStyle(.plain) 
+                        } 
+                    } 
+                }.padding(28).padding(.top, -12)
+            }
+        }.frame(width: 420, height: 500).background(Color.white)
     }
 }
 
 struct AddToChannelModal: View {
     @Environment(\.dismiss) var dismiss; var controller: ServerController; let playlist: Playlist
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack { Text("Add to Channel").font(.vazir(size: 16, weight: .bold)); Spacer(); Button { dismiss() } label: { Image(systemName: "xmark").font(.system(size: 14)).foregroundStyle(Color.gray) }.buttonStyle(.plain) }.padding(24); Divider()
-            ScrollView { VStack(spacing: 8) { if controller.channels.isEmpty { Text("No channels found").font(.vazir(size: 14)).foregroundStyle(Color.gray).padding(40) } else { ForEach(controller.channels) { c in Button { Task { await controller.addPlaylistToChannel(channelID: c.id, playlistID: playlist.id); dismiss() } } label: { HStack(spacing: 12) { ZStack { if let thumb = c.thumbnailUrl, !thumb.isEmpty { AsyncImage(url: URL(string: thumb)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } else { Color.gray.opacity(0.1) } } } else { Color.gray.opacity(0.1) } }.frame(width: 40, height: 30).clipShape(RoundedRectangle(cornerRadius: 4)); Text(c.name ?? "Untitled").font(.vazir(size: 14, weight: .medium)).foregroundStyle(Color(red: 0.07, green: 0.09, blue: 0.15)); Spacer(); Image(systemName: "plus.square.fill").foregroundStyle(Color.blue) }.padding(.horizontal, 20).padding(.vertical, 12).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 10)) }.buttonStyle(.plain) } } }.padding(24) }
-        }.frame(width: 320, height: 400).background(Color.white)
+            HStack { 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add to Channel").font(.vazir(size: 18, weight: .black)).foregroundStyle(slate900)
+                    Text("Categorize this collection").font(.vazir(size: 11, weight: .medium)).foregroundStyle(slate600)
+                }
+                Spacer()
+                Button { dismiss() } label: { 
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 22)).foregroundStyle(Color.gray.opacity(0.3)) 
+                }.buttonStyle(.plain) 
+            }.padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
+            
+            Divider().opacity(0.1)
+            
+            ScrollView { 
+                VStack(spacing: 10) { 
+                    if controller.channels.isEmpty { 
+                        VStack(spacing: 12) {
+                            Image(systemName: "rectangle.stack.badge.person.crop").font(.system(size: 32)).foregroundStyle(Color.gray.opacity(0.2))
+                            Text("No channels found").font(.vazir(size: 14)).foregroundStyle(slate600.opacity(0.6))
+                        }.padding(80) 
+                    } else { 
+                        ForEach(controller.channels) { c in 
+                            Button { Task { await controller.addPlaylistToChannel(channelID: c.id, playlistID: playlist.id); dismiss() } } label: { 
+                                HStack(spacing: 14) { 
+                                    ZStack { 
+                                        if let thumb = c.thumbnailUrl, !thumb.isEmpty { 
+                                            AsyncImage(url: URL(string: thumb)) { phase in 
+                                                if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill) } 
+                                                else { Color.gray.opacity(0.1) } 
+                                            } 
+                                        } else { Color.gray.opacity(0.1).overlay { Image(systemName: "person.2.fill").font(.system(size: 12)).foregroundStyle(Color.gray.opacity(0.4)) } } 
+                                    }.frame(width: 48, height: 36).clipShape(RoundedRectangle(cornerRadius: 8)).shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(c.name ?? "Untitled").font(.vazir(size: 15, weight: .bold)).foregroundStyle(slate900)
+                                        Text("\(c.playlistCount) Playlists").font(.vazir(size: 11, weight: .medium)).foregroundStyle(slate600.opacity(0.7))
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.app.fill").foregroundStyle(Color.blue.opacity(0.8)).font(.system(size: 18))
+                                }.padding(.horizontal, 16).padding(.vertical, 14).background(Color.black.opacity(0.02)).clipShape(RoundedRectangle(cornerRadius: 12)) 
+                            }.buttonStyle(.plain) 
+                        } 
+                    } 
+                }.padding(28).padding(.top, -12) 
+            }
+        }.frame(width: 420, height: 500).background(Color.white)
     }
 }
 
