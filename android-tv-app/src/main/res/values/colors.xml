@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="tv_background">#FFFFFF</color>
-    <color name="tv_sidebar_bg">#F9F9F9</color>
+    <color name="tv_background">#FAFAFF</color>
+    <color name="tv_sidebar_bg">#F0F0F5</color>
     <color name="tv_surface">#F2F2F2</color>
-    <color name="tv_surface_alt">#EBEBEB</color>
-    <color name="tv_text">#282828</color>
+    <color name="tv_surface_alt">#F0F0F5</color>
+    <color name="tv_text">#121212</color>
     <color name="tv_text_header">#121212</color>
     <color name="tv_muted">#606060</color>
     <color name="tv_accent">#FF0000</color>
     <color name="tv_focus">#0455B1</color>
     <color name="tv_black">#000000</color>
     <color name="tv_white">#FFFFFF</color>
-    <color name="tv_sidebar_selected_bg">#E0E0E0</color>
+    <color name="tv_sidebar_selected_bg">#FFFFFF</color>
 
     <!-- MEDIA3 & EXOPLAYER OVERRIDES (YouTube Theme Guarantee) -->
     <color name="lib_media3_player_seek_bar_played_color">#FF0000</color>

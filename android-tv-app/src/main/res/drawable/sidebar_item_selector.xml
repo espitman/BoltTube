@@ -3,13 +3,13 @@
     <item android:state_focused="true">
         <shape android:shape="rectangle">
             <solid android:color="@color/tv_sidebar_selected_bg" />
-            <corners android:radius="8dp" />
+            <corners android:radius="12dp" />
         </shape>
     </item>
     <item android:state_selected="true">
         <shape android:shape="rectangle">
             <solid android:color="@color/tv_sidebar_selected_bg" />
-            <corners android:radius="8dp" />
+            <corners android:radius="12dp" />
         </shape>
     </item>
     <item>
