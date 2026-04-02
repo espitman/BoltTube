@@ -89,9 +89,20 @@ class MediaRepository:
     def save_item(self, item: MediaItem):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT OR REPLACE INTO media_items 
+                INSERT INTO media_items 
                 (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    file_name = excluded.file_name,
+                    file_path = excluded.file_path,
+                    stream_url = excluded.stream_url,
+                    size = excluded.size,
+                    created_at = excluded.created_at,
+                    source_url = excluded.source_url,
+                    thumbnail_url = excluded.thumbnail_url,
+                    duration = excluded.duration,
+                    title = excluded.title,
+                    is_downloaded = excluded.is_downloaded
             """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title, getattr(item, 'is_downloaded', 1)))
 
     def delete_item(self, media_id: str):

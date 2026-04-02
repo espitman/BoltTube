@@ -144,20 +144,43 @@ final class ServerController {
         if let value = value { let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines); appendLog("Pasted: \(trimmed.prefix(60))..."); videoURL = trimmed; scheduleQualityRefresh() }
     }
     func scheduleQualityRefresh() {
-        qualityRefreshTask?.cancel(); let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); if trimmedURL.isEmpty { resolvedTitle = ""; formats = []; selectedFormatID = "best"; return }
+        qualityRefreshTask?.cancel(); let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); if trimmedURL.isEmpty { resetResolvedVideoState(); return }
         qualityRefreshTask = Task { [weak self] in do { try await Task.sleep(for: .milliseconds(600)) } catch { return }; guard !Task.isCancelled else { return }; await self?.resolveQualities(for: trimmedURL) }
     }
-    func downloadVideo() async {
-        guard !isBusy else { return }
-        guard await ensurePythonReady() else { return }
-        let url = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); guard !url.isEmpty else { return }
+    func prepareOffloadedDownload(url: String) {
+        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty else { return }
+        resetResolvedVideoState()
+        videoURL = trimmedURL
+        scheduleQualityRefresh()
+    }
+
+    func resetResolvedVideoState() {
+        resolvedTitle = ""
+        resolvedThumbnailUrl = ""
+        resolvedDurationSeconds = 0
+        formats = []
+        selectedFormatID = "best"
+        downloadProgress = 0
+        downloadProgressText = ""
+    }
+
+    @discardableResult
+    func downloadVideo(existingMediaID: String? = nil) async -> Bool {
+        guard !isBusy else { return false }
+        guard await ensurePythonReady() else { return false }
+        let url = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); guard !url.isEmpty else { return false }
         isBusy = true; isDownloading = true; downloadProgress = 0; downloadProgressText = "Starting download..."; lastProgressBytes = 0; lastProgressTime = Date()
         defer { isBusy = false; isDownloading = false }
         do {
-            let data = try await runDownloadCommand(arguments: [bridgeScriptURL.path, "download-progress", "--download-dir", downloadDirectory.path, "--url", url, "--format-id", selectedFormatID])
+            var arguments = [bridgeScriptURL.path, "download-progress", "--download-dir", downloadDirectory.path, "--url", url, "--format-id", selectedFormatID]
+            if let existingMediaID, !existingMediaID.isEmpty {
+                arguments.append(contentsOf: ["--media-id", existingMediaID])
+            }
+            let data = try await runDownloadCommand(arguments: arguments)
             let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(DownloadResponse.self, from: data)
-            lastDownloadedFileName = response.fileName; downloadProgress = 1; downloadProgressText = "Download complete"; appendLog("Saved \(response.fileName)"); await refreshLibrary(); videoURL = ""; resolvedTitle = ""; resolvedThumbnailUrl = ""; resolvedDurationSeconds = 0; formats = []; selectedFormatID = "best"
-        } catch { appendLog("Download failed: \(error.localizedDescription)"); downloadProgressText = "Download failed" }
+            lastDownloadedFileName = response.fileName; downloadProgress = 1; downloadProgressText = "Download complete"; appendLog("Saved \(response.fileName)"); await refreshLibrary(); videoURL = ""; resetResolvedVideoState(); return true
+        } catch { appendLog("Download failed: \(error.localizedDescription)"); downloadProgressText = "Download failed"; return false }
     }
 
     func addOffloadedVideo() async {
@@ -174,11 +197,7 @@ final class ServerController {
             appendLog("Added offloaded item: \(response.fileName)")
             await refreshLibrary()
             videoURL = ""
-            resolvedTitle = ""
-            resolvedThumbnailUrl = ""
-            resolvedDurationSeconds = 0
-            formats = []
-            selectedFormatID = "best"
+            resetResolvedVideoState()
         } catch {
             appendLog("Add offloaded failed: \(error.localizedDescription)")
         }
@@ -282,7 +301,7 @@ final class ServerController {
     func checkHealth() async { guard let url = URL(string: "\(serverURLDisplay)/health") else { return }; do { let (data, _) = try await URLSession.shared.data(from: url); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(HealthResponse.self, from: data); lastHealthMessage = "Share server OK on port \(decoded.port)."; appendLog(lastHealthMessage) } catch { lastHealthMessage = "Health check failed."; appendLog(lastHealthMessage) } }
     private func ensurePythonReady() async -> Bool { if FileManager.default.fileExists(atPath: venvPythonURL.path) { return true }; appendLog("Preparing Python..."); await installPythonEnvironment(); return FileManager.default.fileExists(atPath: venvPythonURL.path) }
     private func installPythonEnvironment() async { do { ensureDirectoryExists(appSupportDirectory); ensureDirectoryExists(downloadDirectory); if !FileManager.default.fileExists(atPath: venvPythonURL.path) { try await runCommand(executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-m", "venv", venvDirectory.path]) }; try await runCommand(executable: venvPipURL, arguments: ["install", "-r", requirementsURL.path]); appendLog("Python ready.") } catch { appendLog("Python setup failed.") } }
-    private func resolveQualities(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingQualities = true; defer { isResolvingQualities = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "resolve", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(ResolveResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds; formats = response.formats; selectedFormatID = response.formats.last?.id ?? "best" } catch { appendLog("Quality load failed.") } }
+    private func resolveQualities(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingQualities = true; defer { isResolvingQualities = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "resolve", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(ResolveResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; let previousSelection = selectedFormatID; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds; formats = response.formats; selectedFormatID = response.formats.contains(where: { $0.id == previousSelection }) ? previousSelection : (response.formats.last?.id ?? "best") } catch { appendLog("Quality load failed.") } }
     private var normalizedPort: String { let digits = portText.filter(\.isNumber); return digits.isEmpty ? "9864" : digits }
     private var appSupportDirectory: URL { FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/BoltTubeMacNative", directoryHint: .isDirectory) }
     private var venvDirectory: URL { appSupportDirectory.appending(path: ".venv", directoryHint: .isDirectory) }

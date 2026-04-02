@@ -127,18 +127,20 @@ class MediaLibrary:
                 return True
         return False
 
-    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1) -> MediaItem:
+    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1, existing_media_id: Optional[str] = None) -> MediaItem:
         with self._lock:
-            media_id = f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
+            existing_item = self.repo.get_item(existing_media_id) if existing_media_id else None
+            media_id = existing_media_id if existing_item else f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
             final_p = file_path.with_name(f"{media_id}{file_path.suffix}")
+            Path(final_p).unlink(missing_ok=True)
             file_path.rename(final_p)
             
             # Clean title
             final_title = title if title else final_p.stem
             
             item = MediaItem(id=media_id, file_name=final_p.name, file_path=str(final_p), stream_url=f"/media/{media_id}",
-                            size=readable_size_internal(final_p.stat().st_size), created_at=datetime.now(timezone.utc).isoformat(), 
-                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title)
+                            size=readable_size_internal(final_p.stat().st_size), created_at=(existing_item or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
+                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title, is_downloaded=is_downloaded)
             self.repo.save_item(item)
             return item
 

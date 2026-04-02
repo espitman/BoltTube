@@ -101,12 +101,28 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
         formats.append({"id": str(s.itag), "title": s.resolution, "details": details, "filesize": readable_size(total_size)})
     return {"title": yt.title, "thumbnail_url": thumb, "duration_seconds": int(getattr(yt, "length", 0)), "formats": formats}
 
-def _download_with_progress(url: str, format_id: str, client: str) -> Dict[str, Any]:
-    yt = YouTube(url, client=client)
+def _load_stream_for_format(url: str, format_id: str, preferred_client: Optional[str] = None):
+    clients = [preferred_client] if preferred_client else []
+    clients.extend(client for client in RESOLVE_CLIENTS if client and client != preferred_client)
+    last_error: Optional[Exception] = None
+
+    for client in clients:
+        try:
+            yt = YouTube(url, client=client)
+            stream = yt.streams.get_by_itag(int(format_id))
+            if stream:
+                return yt, stream, client
+        except Exception as error:
+            last_error = error
+
+    if last_error:
+        raise last_error
+    raise ValueError("Format not found")
+
+def _download_with_progress(url: str, format_id: str, client: str, existing_media_id: Optional[str] = None) -> Dict[str, Any]:
+    yt, stream, resolved_client = _load_stream_for_format(url, format_id, client)
     thumb = _stable_t(url, yt)
-    stream = yt.streams.get_by_itag(int(format_id))
-    if not stream:
-        raise ValueError("Format not found")
+    print(json.dumps({"event": "client", "client": resolved_client}), file=sys.stderr, flush=True)
 
     audio = None if stream.is_progressive else yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
     video_total = int(stream.filesize or stream.filesize_approx or 0)
@@ -137,7 +153,14 @@ def _download_with_progress(url: str, format_id: str, client: str) -> Dict[str, 
         v_p.unlink(missing_ok=True)
         a_p.unlink(missing_ok=True)
 
-    item = library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)), title=getattr(yt, "title", f_path.stem))
+    item = library.add(
+        source_url=url,
+        file_path=f_path,
+        thumbnail_url=thumb,
+        duration=int(getattr(yt, "length", 0)),
+        title=getattr(yt, "title", f_path.stem),
+        existing_media_id=existing_media_id,
+    )
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
 def _add_offloaded_item(url: str, client: str) -> Dict[str, Any]:
@@ -343,7 +366,7 @@ def main():
         print(json.dumps(_build_resolve_payload(args.url, client)))
     elif args.command == "download-progress":
         client = _choose_client(args.url)
-        print(json.dumps(_download_with_progress(args.url, args.format_id, client)))
+        print(json.dumps(_download_with_progress(args.url, args.format_id, client, args.media_id)))
     elif args.command == "add-offloaded":
         client = _choose_client(args.url)
         print(json.dumps(_add_offloaded_item(args.url, client)))
