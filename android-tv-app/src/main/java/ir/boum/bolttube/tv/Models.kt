@@ -86,10 +86,57 @@ data class VideoItem(
     val subtitle: String,
     val thumbnailUrl: String?,
     val streamUrl: String,
+    val sourceUrl: String,
     val createdAt: String,
     val duration: Int,
     val isOffloaded: Boolean,
 ) : TvRowItem
+
+@Serializable
+data class RemoteFormat(
+    val id: String,
+    val title: String,
+    val details: String = "",
+    val filesize: String = "",
+)
+
+@Serializable
+data class ResolveResponse(
+    val title: String = "",
+    @SerialName("thumbnail_url")
+    val thumbnailUrl: String = "",
+    @SerialName("duration_seconds")
+    val durationSeconds: Int = 0,
+    val formats: List<RemoteFormat> = emptyList(),
+    @SerialName("media_id")
+    val mediaId: String = "",
+    @SerialName("resolved_client")
+    val resolvedClient: String = "",
+)
+
+@Serializable
+data class OffloadedDownloadStatus(
+    @SerialName("mediaId")
+    val mediaId: String = "",
+    val status: String = "idle",
+    val fraction: Double = 0.0,
+    @SerialName("downloadedBytes")
+    val downloadedBytes: Double = 0.0,
+    @SerialName("totalBytes")
+    val totalBytes: Double = 0.0,
+    @SerialName("speedBytesPerSecond")
+    val speedBytesPerSecond: Double = 0.0,
+    val error: String = "",
+    val title: String = "",
+    @SerialName("thumbnailUrl")
+    val thumbnailUrl: String = "",
+    @SerialName("sourceUrl")
+    val sourceUrl: String = "",
+    @SerialName("fileName")
+    val fileName: String = "",
+    @SerialName("streamUrl")
+    val streamUrl: String = "",
+)
 
 @Serializable
 data class PlaylistItemsResponse(

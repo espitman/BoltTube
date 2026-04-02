@@ -124,6 +124,14 @@ class TvBrowseFragment : Fragment() {
     }
 
     private fun openVideo(item: VideoItem) {
+        if (item.isOffloaded) {
+            OffloadedDownloadDialogFragment.newInstance(
+                mediaId = item.id,
+                title = item.title,
+                thumbnailUrl = item.thumbnailUrl.orEmpty(),
+            ).show(parentFragmentManager, "offloaded_download")
+            return
+        }
         startActivity(
             Intent(requireContext(), VideoPlayerActivity::class.java)
                 .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, item.streamUrl)
@@ -264,6 +272,7 @@ class TvBrowseFragment : Fragment() {
             subtitle = "",
             thumbnailUrl = item.thumbnailUrl?.let(viewModel::absoluteMediaUrl),
             streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
+            sourceUrl = item.sourceUrl,
             createdAt = item.createdAt,
             duration = item.duration,
             isOffloaded = !item.isDownloaded,

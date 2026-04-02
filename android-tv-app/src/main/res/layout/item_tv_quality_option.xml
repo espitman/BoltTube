@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="10dp"
+    android:background="@drawable/bg_tv_quality_option_idle"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:minWidth="132dp"
+    android:orientation="vertical"
+    android:paddingHorizontal="18dp"
+    android:paddingVertical="13dp">
+
+    <TextView
+        android:id="@+id/qualityOptionTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/tv_text"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/qualityOptionSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="@color/tv_muted"
+        android:textSize="11sp"
+        android:maxLines="2" />
+
+</LinearLayout>

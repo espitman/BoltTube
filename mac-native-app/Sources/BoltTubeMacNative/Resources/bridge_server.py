@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 import threading
 from pathlib import Path
@@ -27,8 +28,12 @@ except ImportError:
 app = Flask(__name__)
 CORS(app)
 library: Optional[MediaLibrary] = None
-RESOLVE_CLIENTS = ("WEB", "IOS", "TV", "ANDROID_VR")
+RESOLVE_CLIENTS = ("ANDROID_VR", "IOS", "TV", "WEB")
 CLIENT_PROBE_TIMEOUT = 6
+download_jobs: Dict[str, Dict[str, Any]] = {}
+download_jobs_lock = threading.RLock()
+resolved_client_cache: Dict[str, str] = {}
+resolved_client_cache_lock = threading.RLock()
 
 def readable_size(num: int) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
@@ -40,6 +45,30 @@ def sanitize_filename(name: str) -> str:
     name = re.sub(r'[^\w\s\u0600-\u06FF-]', '', name)
     return re.sub(r'\s+', ' ', name).strip()
 
+def _emit_event(payload: Dict[str, Any], progress_callback=None):
+    if progress_callback is not None:
+        progress_callback(payload)
+    print(json.dumps(payload), file=sys.stderr, flush=True)
+
+def _run_bridge_cli(command: str, *, url: Optional[str] = None, format_id: Optional[str] = None, media_id: Optional[str] = None) -> Dict[str, Any]:
+    if library is None:
+        raise RuntimeError("Library not initialized")
+    args = [sys.executable, __file__, command, "--download-dir", str(library.download_dir)]
+    if url:
+        args.extend(["--url", url])
+    if format_id:
+        args.extend(["--format-id", format_id])
+    if media_id:
+        args.extend(["--media-id", media_id])
+    result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        raise RuntimeError(stderr or f"{command} failed")
+    output = (result.stdout or "").strip()
+    if not output:
+        raise RuntimeError(f"{command} returned empty output")
+    return json.loads(output)
+
 def _extract_id(url: str) -> Optional[str]:
     try:
         from urllib.parse import urlparse, parse_qs
@@ -49,24 +78,43 @@ def _extract_id(url: str) -> Optional[str]:
     except: return None
     return None
 
+def _canonicalize_youtube_url(url: str) -> str:
+    video_id = _extract_id(url)
+    return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
+
 def _stable_t(url: str, yt: Optional[YouTube] = None) -> str:
     v_id = _extract_id(url)
     return f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg" if v_id else (yt.thumbnail_url if yt else "")
 
 def _probe_client_worker(url: str, client: str, result_queue):
+    url = _canonicalize_youtube_url(url)
     try:
         yt = YouTube(url, client=client)
-        title = yt.title
-        streams = yt.streams.filter(file_extension="mp4")
-        count = len(list(streams))
-        result_queue.put({"ok": True, "client": client, "title": title, "count": count})
+        _ = yt.title
+        _ = yt.streams.filter(file_extension="mp4").first()
+        result_queue.put({"ok": True, "client": client})
     except Exception as error:
         result_queue.put({"ok": False, "client": client, "error": str(error)})
+
+def _client_candidates(url: str) -> List[str]:
+    canonical = _canonicalize_youtube_url(url)
+    with resolved_client_cache_lock:
+        cached = resolved_client_cache.get(canonical)
+    ordered = []
+    if cached:
+        ordered.append(cached)
+    ordered.extend(client for client in RESOLVE_CLIENTS if client not in ordered)
+    return ordered
+
+def _remember_resolved_client(url: str, client: str):
+    canonical = _canonicalize_youtube_url(url)
+    with resolved_client_cache_lock:
+        resolved_client_cache[canonical] = client
 
 def _choose_client(url: str) -> str:
     ctx = mp.get_context("fork")
     last_error = "metadata probe failed"
-    for client in RESOLVE_CLIENTS:
+    for client in _client_candidates(url):
         result_queue = ctx.Queue()
         process = ctx.Process(target=_probe_client_worker, args=(url, client, result_queue))
         process.start()
@@ -79,11 +127,13 @@ def _choose_client(url: str) -> str:
         if not result_queue.empty():
             result = result_queue.get()
             if result.get("ok"):
+                _remember_resolved_client(url, client)
                 return client
             last_error = result.get("error") or f"{client} failed"
     raise RuntimeError(last_error)
 
 def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
+    url = _canonicalize_youtube_url(url)
     yt = YouTube(url, client=client)
     thumb = _stable_t(url, yt)
     streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
@@ -101,9 +151,40 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
         formats.append({"id": str(s.itag), "title": s.resolution, "details": details, "filesize": readable_size(total_size)})
     return {"title": yt.title, "thumbnail_url": thumb, "duration_seconds": int(getattr(yt, "length", 0)), "formats": formats}
 
+def _resolve_payload_worker(url: str, client: str, result_queue):
+    try:
+        payload = _build_resolve_payload(url, client)
+        result_queue.put({"ok": True, "client": client, "payload": payload})
+    except Exception as error:
+        result_queue.put({"ok": False, "client": client, "error": str(error)})
+
+def _resolve_payload_with_fallback(url: str) -> Dict[str, Any]:
+    ctx = mp.get_context("fork")
+    last_error = "metadata probe failed"
+    for client in _client_candidates(url):
+        result_queue = ctx.Queue()
+        process = ctx.Process(target=_resolve_payload_worker, args=(url, client, result_queue))
+        process.start()
+        process.join(CLIENT_PROBE_TIMEOUT)
+        if process.is_alive():
+            process.terminate()
+            process.join()
+            last_error = f"{client} timed out"
+            continue
+        if not result_queue.empty():
+            result = result_queue.get()
+            if result.get("ok"):
+                _remember_resolved_client(url, client)
+                payload = result.get("payload") or {}
+                payload["resolved_client"] = client
+                return payload
+            last_error = result.get("error") or f"{client} failed"
+    raise RuntimeError(last_error)
+
 def _load_stream_for_format(url: str, format_id: str, preferred_client: Optional[str] = None):
+    url = _canonicalize_youtube_url(url)
     clients = [preferred_client] if preferred_client else []
-    clients.extend(client for client in RESOLVE_CLIENTS if client and client != preferred_client)
+    clients.extend(client for client in _client_candidates(url) if client and client != preferred_client)
     last_error: Optional[Exception] = None
 
     for client in clients:
@@ -111,6 +192,7 @@ def _load_stream_for_format(url: str, format_id: str, preferred_client: Optional
             yt = YouTube(url, client=client)
             stream = yt.streams.get_by_itag(int(format_id))
             if stream:
+                _remember_resolved_client(url, client)
                 return yt, stream, client
         except Exception as error:
             last_error = error
@@ -119,10 +201,11 @@ def _load_stream_for_format(url: str, format_id: str, preferred_client: Optional
         raise last_error
     raise ValueError("Format not found")
 
-def _download_with_progress(url: str, format_id: str, client: str, existing_media_id: Optional[str] = None) -> Dict[str, Any]:
+def _download_with_progress(url: str, format_id: str, client: str, existing_media_id: Optional[str] = None, progress_callback=None) -> Dict[str, Any]:
+    url = _canonicalize_youtube_url(url)
     yt, stream, resolved_client = _load_stream_for_format(url, format_id, client)
     thumb = _stable_t(url, yt)
-    print(json.dumps({"event": "client", "client": resolved_client}), file=sys.stderr, flush=True)
+    _emit_event({"event": "client", "client": resolved_client}, progress_callback)
 
     audio = None if stream.is_progressive else yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
     video_total = int(stream.filesize or stream.filesize_approx or 0)
@@ -134,11 +217,11 @@ def _download_with_progress(url: str, format_id: str, client: str, existing_medi
         downloaded = int(progress_stream.filesize or 0) - remaining
         per_stream[int(progress_stream.itag)] = max(downloaded, 0)
         now_down = sum(per_stream.values())
-        print(json.dumps({"event": "progress", "downloadedBytes": now_down, "totalBytes": total_bytes, "fraction": now_down/total_bytes if total_bytes>0 else 0}), file=sys.stderr, flush=True)
+        _emit_event({"event": "progress", "downloadedBytes": now_down, "totalBytes": total_bytes, "fraction": now_down/total_bytes if total_bytes>0 else 0}, progress_callback)
 
     yt.register_on_progress_callback(on_p)
     t_name = f"{sanitize_filename(yt.title or 'video')}-{uuid.uuid4().hex[:8]}"
-    print(json.dumps({"event": "starting", "title": yt.title, "tempName": t_name, "totalBytes": total_bytes}), file=sys.stderr, flush=True)
+    _emit_event({"event": "starting", "title": yt.title, "tempName": t_name, "totalBytes": total_bytes}, progress_callback)
 
     target = library.download_dir
     if stream.is_progressive:
@@ -148,7 +231,7 @@ def _download_with_progress(url: str, format_id: str, client: str, existing_medi
         v_p = Path(stream.download(output_path=str(target), filename=f"{t_name}.v"))
         a_p = Path(audio.download(output_path=str(target), filename=f"{t_name}.a"))
         f_path = target / f"{t_name}.mp4"
-        print(json.dumps({"event": "merging"}), file=sys.stderr, flush=True)
+        _emit_event({"event": "merging"}, progress_callback)
         subprocess.run([ffmpeg, "-nostdin", "-y", "-i", str(v_p), "-i", str(a_p), "-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart", str(f_path)], capture_output=True, stdin=subprocess.DEVNULL)
         v_p.unlink(missing_ok=True)
         a_p.unlink(missing_ok=True)
@@ -162,6 +245,99 @@ def _download_with_progress(url: str, format_id: str, client: str, existing_medi
         existing_media_id=existing_media_id,
     )
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
+
+def _set_download_job(media_id: str, **fields):
+    with download_jobs_lock:
+        current = download_jobs.get(media_id, {}).copy()
+        current.update(fields)
+        download_jobs[media_id] = current
+        return current
+
+def _start_offloaded_download(media_id: str, url: str, format_id: str, preferred_client: Optional[str] = None) -> Dict[str, Any]:
+    item = library.repo.get_item(media_id) if library else None
+    if not item:
+        raise ValueError("Media item not found")
+
+    with download_jobs_lock:
+        current = download_jobs.get(media_id)
+        if current and current.get("status") in {"queued", "resolving", "downloading", "merging"}:
+            return current
+        download_jobs[media_id] = {
+            "mediaId": media_id,
+            "status": "queued",
+            "fraction": 0.0,
+            "downloadedBytes": 0,
+            "totalBytes": 0,
+            "speedBytesPerSecond": 0.0,
+            "error": "",
+            "title": item.get("title") or "",
+            "thumbnailUrl": item.get("thumbnail_url") or "",
+            "sourceUrl": item.get("source_url") or url,
+        }
+
+    def worker():
+        last_bytes = 0.0
+        last_time = None
+
+        def on_progress(payload: Dict[str, Any]):
+            nonlocal last_bytes, last_time
+            event = payload.get("event")
+            if event == "starting":
+                _set_download_job(
+                    media_id,
+                    status="downloading",
+                    title=payload.get("title") or item.get("title") or "",
+                    totalBytes=payload.get("totalBytes") or 0,
+                    downloadedBytes=0,
+                    fraction=0.0,
+                    speedBytesPerSecond=0.0,
+                )
+            elif event == "progress":
+                now = time.time()
+                downloaded = float(payload.get("downloadedBytes") or 0.0)
+                speed = 0.0
+                if last_time is not None and now > last_time and downloaded >= last_bytes:
+                    speed = (downloaded - last_bytes) / max(now - last_time, 0.001)
+                last_time = now
+                last_bytes = downloaded
+                _set_download_job(
+                    media_id,
+                    status="downloading",
+                    downloadedBytes=downloaded,
+                    totalBytes=float(payload.get("totalBytes") or 0.0),
+                    fraction=float(payload.get("fraction") or 0.0),
+                    speedBytesPerSecond=speed,
+                )
+            elif event == "merging":
+                _set_download_job(media_id, status="merging")
+            elif event == "client":
+                _set_download_job(media_id, client=payload.get("client") or "")
+
+        try:
+            _set_download_job(media_id, status="resolving")
+            result = _download_with_progress(
+                url=url,
+                format_id=format_id,
+                client=preferred_client or "WEB",
+                existing_media_id=media_id,
+                progress_callback=on_progress,
+            )
+            current = download_jobs.get(media_id, {})
+            _set_download_job(
+                media_id,
+                status="completed",
+                fraction=1.0,
+                speedBytesPerSecond=0.0,
+                downloadedBytes=current.get("downloadedBytes", 0),
+                totalBytes=current.get("totalBytes", 0),
+                fileName=result.get("file_name") or "",
+                streamUrl=result.get("stream_url") or "",
+            )
+        except Exception as error:
+            _set_download_job(media_id, status="failed", error=str(error), speedBytesPerSecond=0.0)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return download_jobs[media_id]
 
 def _add_offloaded_item(url: str, client: str) -> Dict[str, Any]:
     payload = _build_resolve_payload(url, client)
@@ -314,26 +490,82 @@ def serve_video(media_id):
 @app.route("/api/resolve", methods=["POST"])
 def resolve():
     data = request.json
-    client = _choose_client(data["url"])
-    return jsonify(_build_resolve_payload(data["url"], client))
+    try:
+        return jsonify(_run_bridge_cli("resolve", url=data["url"]))
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 504
 
 @app.route("/api/download", methods=["POST"])
 def download():
     data = request.json
     try:
-        client = _choose_client(data["url"])
-        return jsonify(_download_with_progress(data["url"], data["formatId"], client))
+        return jsonify(_download_with_progress(data["url"], data["formatId"], "WEB"))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 504
 
+@app.route("/api/offloaded/resolve", methods=["POST"])
+def resolve_offloaded():
+    data = request.json
+    media_id = data.get("id")
+    item = library.repo.get_item(media_id) if library and media_id else None
+    if not item:
+        return jsonify({"error": "Media item not found"}), 404
+    try:
+        payload = _run_bridge_cli("resolve", url=item["source_url"])
+        payload["media_id"] = media_id
+        return jsonify(payload)
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 504
+
+@app.route("/api/offloaded/download", methods=["POST"])
+def download_offloaded():
+    data = request.json
+    media_id = data.get("id")
+    format_id = data.get("formatId")
+    preferred_client = data.get("preferredClient")
+    item = library.repo.get_item(media_id) if library and media_id else None
+    if not item:
+        return jsonify({"error": "Media item not found"}), 404
+    if not item.get("source_url"):
+        return jsonify({"error": "Missing source URL"}), 400
+    if not format_id:
+        return jsonify({"error": "Missing format id"}), 400
+    try:
+        return jsonify(_start_offloaded_download(media_id, item["source_url"], format_id, preferred_client))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+@app.route("/api/offloaded/download-status/<media_id>")
+def offloaded_download_status(media_id):
+    item = library.repo.get_item(media_id) if library else None
+    if item is None:
+        return jsonify({"error": "Media item not found"}), 404
+    with download_jobs_lock:
+        job = download_jobs.get(media_id)
+    if job:
+        return jsonify(job)
+    return jsonify({
+        "mediaId": media_id,
+        "status": "completed" if item.get("is_downloaded", 0) else "idle",
+        "fraction": 1.0 if item.get("is_downloaded", 0) else 0.0,
+        "downloadedBytes": 0,
+        "totalBytes": 0,
+        "speedBytesPerSecond": 0.0,
+        "error": "",
+        "title": item.get("title") or "",
+        "thumbnailUrl": item.get("thumbnail_url") or "",
+        "sourceUrl": item.get("source_url") or "",
+        "fileName": item.get("file_name") or "",
+        "streamUrl": item.get("stream_url") or "",
+    })
+
 @app.route("/api/add-offloaded", methods=["POST"])
 def add_offloaded():
     data = request.json
     try:
-        client = _choose_client(data["url"])
-        return jsonify(_add_offloaded_item(data["url"], client))
+        return jsonify(_run_bridge_cli("add-offloaded", url=data["url"]))
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 504
 

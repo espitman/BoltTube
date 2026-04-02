@@ -41,7 +41,7 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
         homeButton = findViewById<TextView>(R.id.sidebarHome).apply {
             setOnClickListener {
                 viewModel.clearSelectedChannel()
-                viewModel.refreshLibrary()
+                viewModel.refreshAll()
             }
         }
 
@@ -64,6 +64,11 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
         }
 
         observeSidebar()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshAll()
     }
 
     override fun onServerSubmitted(url: String) {
