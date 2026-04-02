@@ -41,7 +41,7 @@
                     android:layout_marginStart="8dp"
                     android:fontFamily="sans-serif-black"
                     android:text="BoltTube"
-                    android:textColor="@color/tv_text_header"
+                    android:textColor="@color/tv_sidebar_text"
                     android:textSize="22sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -51,7 +51,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="12dp"
                 android:text="MENU"
-                android:textColor="@color/tv_muted"
+                android:textColor="@color/tv_sidebar_muted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
@@ -68,7 +68,7 @@
                 android:layout_marginTop="24dp"
                 android:layout_marginBottom="12dp"
                 android:text="CHANNELS"
-                android:textColor="@color/tv_muted"
+                android:textColor="@color/tv_sidebar_muted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
@@ -87,7 +87,7 @@
                 android:layout_marginTop="24dp"
                 android:layout_marginBottom="12dp"
                 android:text="EXTRA"
-                android:textColor="@color/tv_muted"
+                android:textColor="@color/tv_sidebar_muted"
                 android:textSize="12sp"
                 android:textStyle="bold" />
 
