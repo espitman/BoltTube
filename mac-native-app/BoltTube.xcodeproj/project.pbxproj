@@ -8,15 +8,27 @@
 
 /* Begin PBXBuildFile section */
 		0374BF9054A6D70B73608F0C /* bridge_server.py in Resources */ = {isa = PBXBuildFile; fileRef = F15446F65EE4F7538382AE6D /* bridge_server.py */; };
+		16DBB27955642C04E687272F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 19B99E4983E0B9F0F345369A /* Assets.xcassets */; };
 		25AFA327D38F1AF957741EF4 /* requirements.txt in Resources */ = {isa = PBXBuildFile; fileRef = EDC1E02ADBDF70D214990EBF /* requirements.txt */; };
 		40DCCAF8F72BBC3B2B166924 /* ServerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D554F9679D56C0AC3D18BDE /* ServerController.swift */; };
 		4BEBB5986C370D4E401F93EB /* BoltTubeMacNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F82829F00A247F3345BE121 /* BoltTubeMacNativeApp.swift */; };
+		4C8A780BAB92CBFFD9724B04 /* library.py in Resources */ = {isa = PBXBuildFile; fileRef = 27CE1B05243C7D669BED27CB /* library.py */; };
+		52A3F8EBB06182F8408D3D18 /* repository.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = 13CCCB80ABFD33F7C5BDCEC8 /* repository.cpython-314.pyc */; };
 		82EBEFF690D251F49C976A0C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1137F3B9F91320701B03D77 /* ContentView.swift */; };
+		9C782D54B576B47D298D632C /* library.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = A0437D1CA1831DAC936DBC52 /* library.cpython-314.pyc */; };
+		9FC8B383773A35FF01169CA6 /* repository.py in Resources */ = {isa = PBXBuildFile; fileRef = 61E0E00CBE92E443A2A4CDC2 /* repository.py */; };
+		C984B045FC6670B17FACD008 /* bridge_server.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = 2A60AA0C780FADEC386FCBA6 /* bridge_server.cpython-314.pyc */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		13CCCB80ABFD33F7C5BDCEC8 /* repository.cpython-314.pyc */ = {isa = PBXFileReference; path = "repository.cpython-314.pyc"; sourceTree = "<group>"; };
+		19B99E4983E0B9F0F345369A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		27CE1B05243C7D669BED27CB /* library.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = library.py; sourceTree = "<group>"; };
+		2A60AA0C780FADEC386FCBA6 /* bridge_server.cpython-314.pyc */ = {isa = PBXFileReference; path = "bridge_server.cpython-314.pyc"; sourceTree = "<group>"; };
+		61E0E00CBE92E443A2A4CDC2 /* repository.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = repository.py; sourceTree = "<group>"; };
 		6D554F9679D56C0AC3D18BDE /* ServerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerController.swift; sourceTree = "<group>"; };
 		7F82829F00A247F3345BE121 /* BoltTubeMacNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoltTubeMacNativeApp.swift; sourceTree = "<group>"; };
+		A0437D1CA1831DAC936DBC52 /* library.cpython-314.pyc */ = {isa = PBXFileReference; path = "library.cpython-314.pyc"; sourceTree = "<group>"; };
 		C1137F3B9F91320701B03D77 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		D54B87C5046286FFE7E88816 /* BoltTube.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BoltTube.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EDC1E02ADBDF70D214990EBF /* requirements.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = requirements.txt; sourceTree = "<group>"; };
@@ -32,6 +44,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		217015848913B0F53775D15C /* __pycache__ */ = {
+			isa = PBXGroup;
+			children = (
+				2A60AA0C780FADEC386FCBA6 /* bridge_server.cpython-314.pyc */,
+				A0437D1CA1831DAC936DBC52 /* library.cpython-314.pyc */,
+				13CCCB80ABFD33F7C5BDCEC8 /* repository.cpython-314.pyc */,
+			);
+			path = __pycache__;
+			sourceTree = "<group>";
+		};
 		33AC0695399AA8568ED86979 = {
 			isa = PBXGroup;
 			children = (
@@ -44,8 +66,12 @@
 		4FCE3DE687EEB8CB2C296A1F /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				19B99E4983E0B9F0F345369A /* Assets.xcassets */,
 				F15446F65EE4F7538382AE6D /* bridge_server.py */,
+				27CE1B05243C7D669BED27CB /* library.py */,
+				61E0E00CBE92E443A2A4CDC2 /* repository.py */,
 				EDC1E02ADBDF70D214990EBF /* requirements.txt */,
+				217015848913B0F53775D15C /* __pycache__ */,
 			);
 			name = Resources;
 			path = Sources/BoltTubeMacNative/Resources;
@@ -122,7 +148,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				16DBB27955642C04E687272F /* Assets.xcassets in Resources */,
+				C984B045FC6670B17FACD008 /* bridge_server.cpython-314.pyc in Resources */,
 				0374BF9054A6D70B73608F0C /* bridge_server.py in Resources */,
+				9C782D54B576B47D298D632C /* library.cpython-314.pyc in Resources */,
+				4C8A780BAB92CBFFD9724B04 /* library.py in Resources */,
+				52A3F8EBB06182F8408D3D18 /* repository.cpython-314.pyc in Resources */,
+				9FC8B383773A35FF01169CA6 /* repository.py in Resources */,
 				25AFA327D38F1AF957741EF4 /* requirements.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
