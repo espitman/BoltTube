@@ -142,6 +142,29 @@ class MediaLibrary:
             self.repo.save_item(item)
             return item
 
+    def add_offloaded(self, *, source_url: str, thumbnail_url: str = "", duration: int = 0, title: str = "") -> MediaItem:
+        with self._lock:
+            base_name = title if title else "video"
+            safe_title = "".join(ch for ch in base_name if ch not in '/\\:*?"<>|').strip() or "video"
+            media_id = f"{safe_title[:80]}-{uuid.uuid4().hex[:8]}"
+            file_name = f"{media_id}.mp4"
+            file_path = self.download_dir / file_name
+            item = MediaItem(
+                id=media_id,
+                file_name=file_name,
+                file_path=str(file_path),
+                stream_url=f"/media/{media_id}",
+                size="",
+                created_at=datetime.now(timezone.utc).isoformat(),
+                source_url=source_url,
+                thumbnail_url=thumbnail_url,
+                duration=duration,
+                title=title if title else safe_title,
+                is_downloaded=0,
+            )
+            self.repo.save_item(item)
+            return item
+
 def readable_size_internal(num: int) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if abs(num) < 1024.0: return f"{num:3.1f} {unit}"

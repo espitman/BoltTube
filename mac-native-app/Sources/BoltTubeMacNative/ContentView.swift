@@ -375,7 +375,24 @@ struct ContentView: View {
                 else { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(controller.formats) { f in let isS = controller.selectedFormatID == f.id; Button { controller.selectedFormatID = f.id } label: { VStack(spacing: 2) { Text(f.title).font(.vazir(size: 13, weight: isS ? .black : .bold)).foregroundStyle(isS ? Color.white : slate900); if !f.filesize.isEmpty { Text(f.filesize).font(.vazir(size: 10, weight: .medium)).foregroundStyle(isS ? Color.white.opacity(0.8) : slate600) } }.padding(.horizontal, 14).padding(.vertical, 8).background(RoundedRectangle(cornerRadius: 8).fill(isS ? accentBlue : Color.white).overlay(RoundedRectangle(cornerRadius: 8).stroke(isS ? accentBlue : slate900.opacity(0.12), lineWidth: 1))) }.buttonStyle(.plain) } } } }
             }
             if controller.isDownloading { HStack(spacing: 12) { VStack(alignment: .leading, spacing: 6) { HStack { Text(controller.downloadProgressText).font(.vazir(size: 10, weight: .bold)).foregroundStyle(slate600).lineLimit(1); Spacer(); Text("\(Int(controller.downloadProgress * 100))%").font(.vazir(size: 11, weight: .black)).foregroundStyle(accentBlue) }; GeometryReader { gp in ZStack(alignment: .leading) { Capsule().fill(slate900.opacity(0.05)).frame(height: 6); Capsule().fill(accentBlue).frame(width: gp.size.width * controller.downloadProgress, height: 6) } }.frame(height: 6) }; Button { controller.cancelDownload() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(Color.red.opacity(0.8)) }.buttonStyle(.plain) }.padding(.horizontal, 16).padding(.vertical, 8).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1)) }
-            else { Button { Task { await controller.downloadVideo() } } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingQualities || controller.formats.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain) }
+            else if controller.isAddingOffloaded {
+                HStack(spacing: 12) {
+                    ProgressView().controlSize(.small)
+                    Text("Adding offloaded video...").font(.vazir(size: 12, weight: .bold)).foregroundStyle(slate600)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1))
+            }
+            else {
+                HStack(spacing: 12) {
+                    Button { Task { await controller.downloadVideo() } } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingQualities || controller.formats.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                    Button { Task { await controller.addOffloadedVideo() } } label: { HStack(spacing: 8) { Image(systemName: "tray.and.arrow.down"); Text("Add Offloaded") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(slate900).frame(maxWidth: .infinity).frame(height: 46).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.12), lineWidth: 1)) }.buttonStyle(.plain).disabled(controller.isResolvingQualities || controller.resolvedTitle.isEmpty)
+                }
+            }
         }
     }
 

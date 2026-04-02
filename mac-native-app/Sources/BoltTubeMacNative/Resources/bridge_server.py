@@ -140,6 +140,16 @@ def _download_with_progress(url: str, format_id: str, client: str) -> Dict[str, 
     item = library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)), title=getattr(yt, "title", f_path.stem))
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
+def _add_offloaded_item(url: str, client: str) -> Dict[str, Any]:
+    payload = _build_resolve_payload(url, client)
+    item = library.add_offloaded(
+        source_url=url,
+        thumbnail_url=str(payload.get("thumbnail_url") or ""),
+        duration=int(payload.get("duration_seconds") or 0),
+        title=str(payload.get("title") or "Untitled"),
+    )
+    return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
+
 @app.route("/health")
 def health(): return jsonify({"status": "ok", "port": 9864, "download_dir": str(library.download_dir) if library else ""})
 
@@ -295,6 +305,15 @@ def download():
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 504
 
+@app.route("/api/add-offloaded", methods=["POST"])
+def add_offloaded():
+    data = request.json
+    try:
+        client = _choose_client(data["url"])
+        return jsonify(_add_offloaded_item(data["url"], client))
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 504
+
 @app.route("/api/delete", methods=["POST"])
 def delete():
     return jsonify({"status": "deleted" if library.remove(request.json["id"]) else "not_found"})
@@ -312,7 +331,7 @@ def refresh():
 def main():
     global library
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["serve", "resolve", "download-progress", "list", "delete"])
+    parser.add_argument("command", choices=["serve", "resolve", "download-progress", "add-offloaded", "list", "delete"])
     parser.add_argument("--download-dir", type=Path, required=True); parser.add_argument("--url"); parser.add_argument("--format-id"); parser.add_argument("--port", type=int, default=9864); parser.add_argument("--media-id")
     args = parser.parse_args()
     library = MediaLibrary(args.download_dir)
@@ -325,6 +344,9 @@ def main():
     elif args.command == "download-progress":
         client = _choose_client(args.url)
         print(json.dumps(_download_with_progress(args.url, args.format_id, client)))
+    elif args.command == "add-offloaded":
+        client = _choose_client(args.url)
+        print(json.dumps(_add_offloaded_item(args.url, client)))
     elif args.command == "list": print(json.dumps({"items": library.list_items()}))
     elif args.command == "delete": print(json.dumps({"status": "deleted" if library.remove(args.media_id) else "not_found"}))
 

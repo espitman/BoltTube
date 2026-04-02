@@ -54,7 +54,7 @@ final class ServerController {
     var selectedChannel: Channel? = nil; var channelContent: [ChannelContent] = []; var isFetchingChannelContent = false
     var activeManagementTab: Int = 0 // 0: Channels, 1: Playlists
 
-    var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingQualities = false; var isDownloading = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
+    var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingQualities = false; var isDownloading = false; var isAddingOffloaded = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
     private var shareServerProcess: Process?; private var shareServerOutputPipe: Pipe?; private var qualityRefreshTask: Task<Void, Never>?; private var sleepAssertionID: IOPMAssertionID = 0; private var activeDownloadProcess: Process?; private var activeDownloadTempName: String = ""; private var lastProgressBytes: Double = 0; private var lastProgressTime: Date = Date()
 
     init() {
@@ -158,6 +158,30 @@ final class ServerController {
             let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(DownloadResponse.self, from: data)
             lastDownloadedFileName = response.fileName; downloadProgress = 1; downloadProgressText = "Download complete"; appendLog("Saved \(response.fileName)"); await refreshLibrary(); videoURL = ""; resolvedTitle = ""; resolvedThumbnailUrl = ""; resolvedDurationSeconds = 0; formats = []; selectedFormatID = "best"
         } catch { appendLog("Download failed: \(error.localizedDescription)"); downloadProgressText = "Download failed" }
+    }
+
+    func addOffloadedVideo() async {
+        guard !isBusy else { return }
+        guard await ensurePythonReady() else { return }
+        let url = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); guard !url.isEmpty else { return }
+        isBusy = true
+        isAddingOffloaded = true
+        defer { isBusy = false; isAddingOffloaded = false }
+        do {
+            let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "add-offloaded", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false)
+            let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let response = try decoder.decode(DownloadResponse.self, from: data)
+            appendLog("Added offloaded item: \(response.fileName)")
+            await refreshLibrary()
+            videoURL = ""
+            resolvedTitle = ""
+            resolvedThumbnailUrl = ""
+            resolvedDurationSeconds = 0
+            formats = []
+            selectedFormatID = "best"
+        } catch {
+            appendLog("Add offloaded failed: \(error.localizedDescription)")
+        }
     }
 
     func cancelDownload() {
