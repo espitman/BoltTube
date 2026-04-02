@@ -99,7 +99,7 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
         total_size = v_size if s.is_progressive else v_size + audio_size
         details = "single file" if s.is_progressive else "video+audio merge"
         formats.append({"id": str(s.itag), "title": s.resolution, "details": details, "filesize": readable_size(total_size)})
-    return {"title": yt.title, "thumbnailUrl": thumb, "durationSeconds": int(getattr(yt, "length", 0)), "formats": formats}
+    return {"title": yt.title, "thumbnail_url": thumb, "duration_seconds": int(getattr(yt, "length", 0)), "formats": formats}
 
 def _download_with_progress(url: str, format_id: str, client: str) -> Dict[str, Any]:
     yt = YouTube(url, client=client)
@@ -138,10 +138,10 @@ def _download_with_progress(url: str, format_id: str, client: str) -> Dict[str, 
         a_p.unlink(missing_ok=True)
 
     item = library.add(source_url=url, file_path=f_path, thumbnail_url=thumb, duration=int(getattr(yt, "length", 0)), title=getattr(yt, "title", f_path.stem))
-    return {"id": item.id, "streamUrl": item.stream_url, "fileName": item.file_name}
+    return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
 @app.route("/health")
-def health(): return jsonify({"status": "ok", "port": 9864, "downloadDir": str(library.download_dir) if library else ""})
+def health(): return jsonify({"status": "ok", "port": 9864, "download_dir": str(library.download_dir) if library else ""})
 
 @app.route("/api/items")
 def list_library():

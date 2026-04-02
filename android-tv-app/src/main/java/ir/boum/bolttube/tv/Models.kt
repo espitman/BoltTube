@@ -8,11 +8,15 @@ private const val DEFAULT_SERVER_URL = "http://10.0.2.2:9864"
 @Serializable
 data class MediaSummary(
     val id: String,
+    @SerialName("file_name")
     val fileName: String,
     val title: String = "",
+    @SerialName("stream_url")
     val streamUrl: String,
     val size: String,
+    @SerialName("created_at")
     val createdAt: String,
+    @SerialName("thumbnail_url")
     val thumbnailUrl: String? = null,
     val duration: Int = 0,
 )
