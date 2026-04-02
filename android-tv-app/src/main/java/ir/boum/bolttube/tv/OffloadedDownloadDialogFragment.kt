@@ -32,6 +32,7 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
     private lateinit var spinnerView: ProgressBar
     private lateinit var progressBar: ProgressBar
     private lateinit var progressPercentView: TextView
+    private lateinit var progressContainer: View
     private lateinit var qualityList: RecyclerView
     private lateinit var startButton: Button
     private lateinit var cancelButton: Button
@@ -73,6 +74,7 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
         spinnerView = view.findViewById(R.id.downloadDialogSpinner)
         progressBar = view.findViewById(R.id.downloadDialogProgress)
         progressPercentView = view.findViewById(R.id.downloadDialogPercent)
+        progressContainer = view.findViewById(R.id.downloadDialogProgressContainer)
         qualityList = view.findViewById<RecyclerView>(R.id.downloadDialogQualityList).apply {
             layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             adapter = qualityAdapter
@@ -228,8 +230,10 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
             else -> updateStatus("Preparing download...")
         }
         spinnerView.visibility = if (status.status in setOf("queued", "resolving")) View.VISIBLE else View.GONE
-        progressBar.visibility = if (status.status in setOf("downloading", "merging", "completed")) View.VISIBLE else View.INVISIBLE
-        progressPercentView.visibility = if (progressBar.visibility == View.VISIBLE) View.VISIBLE else View.INVISIBLE
+        val showProgress = status.status in setOf("downloading", "merging", "completed")
+        progressContainer.visibility = if (showProgress) View.VISIBLE else View.GONE
+        progressBar.visibility = if (showProgress) View.VISIBLE else View.INVISIBLE
+        progressPercentView.visibility = if (showProgress) View.VISIBLE else View.INVISIBLE
         updateButtons()
     }
 
@@ -291,7 +295,12 @@ private class TvQualityAdapter(
     }
 
     override fun onBindViewHolder(holder: QualityViewHolder, position: Int) {
-        holder.bind(items[position], items[position].id == selectedId)
+        holder.bind(
+            item = items[position],
+            selected = items[position].id == selectedId,
+            isFirst = position == 0,
+            isLast = position == items.lastIndex,
+        )
     }
 
     override fun getItemCount(): Int = items.size
@@ -318,11 +327,23 @@ private class TvQualityAdapter(
             }
         }
 
-        fun bind(item: RemoteFormat, selected: Boolean) {
+        fun bind(item: RemoteFormat, selected: Boolean, isFirst: Boolean, isLast: Boolean) {
             boundItem = item
             this.selected = selected
+            (itemView.layoutParams as? RecyclerView.LayoutParams)?.let { params ->
+                params.marginStart = if (isFirst) dp(itemView, 2) else 0
+                params.marginEnd = if (isLast) dp(itemView, 2) else dp(itemView, 6)
+                itemView.layoutParams = params
+            }
             titleView.text = item.title
-            subtitleView.text = listOf(item.filesize, item.details).filter { it.isNotBlank() }.joinToString(" • ")
+            val subtitle = item.filesize.trim()
+            if (subtitle.isNotEmpty()) {
+                subtitleView.text = subtitle
+                subtitleView.visibility = View.VISIBLE
+            } else {
+                subtitleView.text = ""
+                subtitleView.visibility = View.GONE
+            }
             itemView.alpha = if (selected) 1f else 0.96f
             applyState(itemView.isFocused)
         }
@@ -343,6 +364,10 @@ private class TvQualityAdapter(
                     if (selected) android.R.color.white else secondaryColor,
                 ),
             )
+        }
+
+        private fun dp(view: View, value: Int): Int {
+            return (value * view.resources.displayMetrics.density).toInt()
         }
     }
 }

@@ -594,14 +594,19 @@ def main():
     if args.command == "serve":
         app.run(host="0.0.0.0", port=args.port, threaded=True)
     elif args.command == "resolve":
-        client = _choose_client(args.url)
-        print(json.dumps(_build_resolve_payload(args.url, client)))
+        print(json.dumps(_resolve_payload_with_fallback(args.url)))
     elif args.command == "download-progress":
         client = _choose_client(args.url)
         print(json.dumps(_download_with_progress(args.url, args.format_id, client, args.media_id)))
     elif args.command == "add-offloaded":
-        client = _choose_client(args.url)
-        print(json.dumps(_add_offloaded_item(args.url, client)))
+        payload = _resolve_payload_with_fallback(args.url)
+        item = library.add_offloaded(
+            source_url=args.url,
+            thumbnail_url=str(payload.get("thumbnail_url") or ""),
+            duration=int(payload.get("duration_seconds") or 0),
+            title=str(payload.get("title") or "Untitled"),
+        )
+        print(json.dumps({"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}))
     elif args.command == "list": print(json.dumps({"items": library.list_items()}))
     elif args.command == "delete": print(json.dumps({"status": "deleted" if library.remove(args.media_id) else "not_found"}))
 

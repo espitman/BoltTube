@@ -82,11 +82,10 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:clipToPadding="false"
-        android:paddingBottom="4dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp" />
+        android:clipChildren="false" />
 
     <LinearLayout
+        android:id="@+id/downloadDialogProgressContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
@@ -94,7 +93,8 @@
         android:orientation="horizontal"
         android:paddingHorizontal="16dp"
         android:paddingVertical="14dp"
-        android:background="@drawable/bg_tv_quality_option_idle">
+        android:background="@drawable/bg_tv_quality_option_idle"
+        android:visibility="gone">
 
         <ProgressBar
             android:id="@+id/downloadDialogProgress"
