@@ -204,7 +204,9 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
                     "completed" -> {
                         isDownloading = false
                         viewModel.refreshAll()
-                        val streamUrl = status.streamUrl.ifBlank { viewModel.absoluteMediaUrl("/media/$mediaId") }
+                        val streamUrl = viewModel.absoluteMediaUrl(
+                            status.streamUrl.ifBlank { "/media/$mediaId" },
+                        )
                         startActivity(
                             Intent(requireContext(), VideoPlayerActivity::class.java)
                                 .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, streamUrl)
