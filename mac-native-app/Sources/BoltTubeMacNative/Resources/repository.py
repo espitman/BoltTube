@@ -121,6 +121,39 @@ class MediaRepository:
             rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]
 
+    def get_items_by_source_url(self, source_url: str) -> List[Dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded
+                FROM media_items
+                WHERE source_url = ?
+                ORDER BY is_downloaded DESC, created_at DESC
+                """,
+                (source_url,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def merge_items(self, keep_id: str, duplicate_ids: List[str]):
+        duplicate_ids = [item_id for item_id in duplicate_ids if item_id != keep_id]
+        if not duplicate_ids:
+            return
+
+        placeholders = ", ".join("?" for _ in duplicate_ids)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                f"""
+                INSERT OR IGNORE INTO playlist_items (playlist_id, media_id, added_at, sort_order)
+                SELECT playlist_id, ?, added_at, sort_order
+                FROM playlist_items
+                WHERE media_id IN ({placeholders})
+                """,
+                (keep_id, *duplicate_ids),
+            )
+            conn.execute(f"DELETE FROM playlist_items WHERE media_id IN ({placeholders})", duplicate_ids)
+            conn.execute(f"DELETE FROM media_items WHERE id IN ({placeholders})", duplicate_ids)
+
     def create_playlist(self, name: str, thumbnail_url: Optional[str] = None) -> int:
         from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:

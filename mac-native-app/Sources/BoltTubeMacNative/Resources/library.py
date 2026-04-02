@@ -127,10 +127,31 @@ class MediaLibrary:
                 return True
         return False
 
+    def _preferred_existing_item(self, source_url: str, preferred_media_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        if preferred_media_id:
+            item = self.repo.get_item(preferred_media_id)
+            if item:
+                return item
+        matches = self.repo.get_items_by_source_url(source_url) if source_url else []
+        return matches[0] if matches else None
+
+    def _collapse_duplicates(self, source_url: str, keep_id: str, keep_file_path: Optional[Path] = None):
+        if not source_url:
+            return
+        matches = self.repo.get_items_by_source_url(source_url)
+        duplicates = [item for item in matches if item["id"] != keep_id]
+        if not duplicates:
+            return
+        for duplicate in duplicates:
+            duplicate_path = Path(duplicate.get("file_path") or "")
+            if duplicate_path and duplicate_path.exists() and (keep_file_path is None or duplicate_path != keep_file_path):
+                duplicate_path.unlink(missing_ok=True)
+        self.repo.merge_items(keep_id, [item["id"] for item in duplicates])
+
     def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1, existing_media_id: Optional[str] = None) -> MediaItem:
         with self._lock:
-            existing_item = self.repo.get_item(existing_media_id) if existing_media_id else None
-            media_id = existing_media_id if existing_item else f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
+            existing_item = self._preferred_existing_item(source_url, existing_media_id)
+            media_id = str(existing_item["id"]) if existing_item else f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
             final_p = file_path.with_name(f"{media_id}{file_path.suffix}")
             Path(final_p).unlink(missing_ok=True)
             file_path.rename(final_p)
@@ -142,10 +163,30 @@ class MediaLibrary:
                             size=readable_size_internal(final_p.stat().st_size), created_at=(existing_item or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
                             source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title, is_downloaded=is_downloaded)
             self.repo.save_item(item)
+            self._collapse_duplicates(source_url, media_id, final_p)
             return item
 
     def add_offloaded(self, *, source_url: str, thumbnail_url: str = "", duration: int = 0, title: str = "") -> MediaItem:
         with self._lock:
+            existing_item = self._preferred_existing_item(source_url)
+            if existing_item:
+                item = MediaItem(
+                    id=str(existing_item["id"]),
+                    file_name=str(existing_item["file_name"]),
+                    file_path=str(existing_item["file_path"]),
+                    stream_url=str(existing_item["stream_url"]),
+                    size=str(existing_item.get("size") or ""),
+                    created_at=str(existing_item.get("created_at") or datetime.now(timezone.utc).isoformat()),
+                    source_url=source_url,
+                    thumbnail_url=thumbnail_url or str(existing_item.get("thumbnail_url") or ""),
+                    duration=duration or int(existing_item.get("duration") or 0),
+                    title=title or str(existing_item.get("title") or "Untitled"),
+                    is_downloaded=int(existing_item.get("is_downloaded", 0)),
+                )
+                self.repo.save_item(item)
+                self._collapse_duplicates(source_url, item.id, Path(item.file_path))
+                return item
+
             base_name = title if title else "video"
             safe_title = "".join(ch for ch in base_name if ch not in '/\\:*?"<>|').strip() or "video"
             media_id = f"{safe_title[:80]}-{uuid.uuid4().hex[:8]}"
