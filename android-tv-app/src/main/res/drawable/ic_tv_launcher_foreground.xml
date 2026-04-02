@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="13"
+        android:translateY="13"
+        android:scaleX="0.75"
+        android:scaleY="0.75">
+        <!-- Red Pill (Centered and Scaled down for safe zone) -->
+        <path
+            android:fillColor="#FF0000"
+            android:pathData="M31,24h46a10,10 0,0 1,10 10v40a10,10 0,0 1,-10 10H31A10,10 0,0 1,21 74V34A10,10 0,0 1,31 24z" />
+        <!-- Play Arrow -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M45,39l22,15 -22,15z" />
+    </group>
+</vector>

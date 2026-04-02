@@ -1,13 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <gradient
-        android:angle="0"
-        android:endColor="#0E1630"
-        android:startColor="#1A2242" />
-    <corners android:radius="8dp" />
-    <padding
-        android:bottom="12dp"
-        android:left="12dp"
-        android:right="12dp"
-        android:top="12dp" />
-</shape>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Premium Gradient Background -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:startColor="@color/slate_950"
+                android:endColor="@color/slate_900" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+
+    <!-- Subtle Grain or Pattern (Optional, but let's keep it clean) -->
+
+    <!-- Center Logo -->
+    <item 
+        android:gravity="center"
+        android:top="32dp"
+        android:bottom="32dp"
+        android:left="64dp"
+        android:right="64dp">
+        <vector
+            android:width="128dp"
+            android:height="128dp"
+            android:viewportWidth="108"
+            android:viewportHeight="108">
+            <!-- Background of logo -->
+            <path
+                android:fillColor="#1A2242"
+                android:pathData="M16,16h76a12,12 0,0 1,12 12v52a12,12 0,0 1,-12 12H16A12,12 0,0 1,4 80V28A12,12 0,0 1,16 16z" />
+            <!-- Red Pill -->
+            <path
+                android:fillColor="#FF0000"
+                android:pathData="M31,24h46a10,10 0,0 1,10 10v40a10,10 0,0 1,-10 10H31A10,10 0,0 1,21 74V34A10,10 0,0 1,31 24z" />
+            <!-- Play Arrow -->
+            <path
+                android:fillColor="#FFFFFF"
+                android:pathData="M45,39l22,15 -22,15z" />
+        </vector>
+    </item>
+
+</layer-list>
