@@ -35,8 +35,8 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
     private lateinit var progressPercentView: TextView
     private lateinit var progressContainer: View
     private lateinit var qualityList: RecyclerView
-    private lateinit var startButton: Button
-    private lateinit var cancelButton: Button
+    private lateinit var startButton: View
+    private lateinit var cancelButton: View
 
     private val qualityAdapter: TvQualityAdapter by lazy(LazyThreadSafetyMode.NONE) {
         TvQualityAdapter { format ->
@@ -77,15 +77,24 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
         progressBar = view.findViewById(R.id.downloadDialogProgress)
         progressPercentView = view.findViewById(R.id.downloadDialogPercent)
         progressContainer = view.findViewById(R.id.downloadDialogProgressContainer)
-        qualityList = view.findViewById<RecyclerView>(R.id.downloadDialogQualityList).apply {
-            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-            adapter = qualityAdapter
-        }
-        startButton = view.findViewById<Button>(R.id.downloadDialogStart).apply {
-            setOnClickListener { startDownload() }
-        }
-        cancelButton = view.findViewById<Button>(R.id.downloadDialogCancel).apply {
-            setOnClickListener { dismissAllowingStateLoss() }
+        qualityList = view.findViewById<RecyclerView>(R.id.downloadDialogQualityList)
+        qualityList.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        qualityList.adapter = qualityAdapter
+        
+        startButton = view.findViewById<View>(R.id.downloadDialogStart)
+        cancelButton = view.findViewById<View>(R.id.downloadDialogCancel)
+        
+        startButton.setOnClickListener { startDownload() }
+        cancelButton.setOnClickListener { dismissAllowingStateLoss() }
+
+        listOf(startButton, cancelButton).forEach { button ->
+            button.setOnFocusChangeListener { v, hasFocus ->
+                v.animate()
+                    .scaleX(if (hasFocus) 1.04f else 1f)
+                    .scaleY(if (hasFocus) 1.04f else 1f)
+                    .setDuration(150)
+                    .start()
+            }
         }
 
         titleView.text = requireArguments().getString(ARG_TITLE).orEmpty()
@@ -253,7 +262,15 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
 
     private fun updateButtons() {
         startButton.isEnabled = !isResolving && !isDownloading && selectedFormatId.isNotBlank()
-        cancelButton.text = if (isDownloading) "Close" else "Cancel"
+        
+        // Update button texts if they are LinearLayouts with TextViews
+        cancelButton.findViewById<TextView>(R.id.downloadDialogCancelText)?.let {
+            it.text = if (isDownloading) "Close" else "Cancel"
+        }
+        startButton.findViewById<TextView>(R.id.downloadDialogStartText)?.let {
+            it.text = if (isDownloading) "Downloading..." else "Start Download"
+        }
+
         if (!isResolving && !(isDownloading && progressBar.progress == 0)) {
             spinnerView.visibility = View.GONE
         }

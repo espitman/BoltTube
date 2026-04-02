@@ -136,11 +136,18 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
     url = _canonicalize_youtube_url(url)
     yt = YouTube(url, client=client)
     thumb = _stable_t(url, yt)
+    
+    # Try getting mp4 streams first (preferred for compatibility)
     streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
+    if not streams:
+        # Fallback to all streams if mp4 is not available
+        streams = yt.streams.order_by("resolution")
+        
     formats = []
     seen_res = set()
     best_audio = yt.streams.filter(only_audio=True, subtype="mp4").order_by("abr").desc().first()
     audio_size = (best_audio.filesize or best_audio.filesize_approx or 0) if best_audio else 0
+    
     for s in streams:
         if not s.resolution or s.resolution in seen_res:
             continue
@@ -149,6 +156,14 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
         total_size = v_size if s.is_progressive else v_size + audio_size
         details = "single file" if s.is_progressive else "video+audio merge"
         formats.append({"id": str(s.itag), "title": s.resolution, "details": details, "filesize": readable_size(total_size)})
+    
+    if not formats:
+        # Final desperate attempt: any progressive stream
+        for s in yt.streams.filter(progressive=True):
+            if s.resolution and s.resolution not in seen_res:
+                seen_res.add(s.resolution)
+                formats.append({"id": str(s.itag), "title": s.resolution, "details": "progressive", "filesize": readable_size(s.filesize or 0)})
+                
     return {"title": yt.title, "thumbnail_url": thumb, "duration_seconds": int(getattr(yt, "length", 0)), "formats": formats}
 
 def _resolve_payload_worker(url: str, client: str, result_queue):
