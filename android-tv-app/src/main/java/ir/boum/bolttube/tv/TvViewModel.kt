@@ -89,6 +89,48 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         refreshChannels()
     }
 
+    fun deleteItem(mediaId: String) {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        _uiState.value = _uiState.value.copy(error = "", message = "Deleting video...")
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repository.deleteItem(serverUrl, mediaId)
+            }.onSuccess { response ->
+                if (response.status != "deleted") {
+                    throw IllegalStateException("Could not delete the video.")
+                }
+                _uiState.value = _uiState.value.copy(error = "", message = "Video deleted.")
+                refreshCurrentContext()
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    error = error.message ?: "Could not delete the video.",
+                    message = "",
+                )
+            }
+        }
+    }
+
+    fun offloadItem(mediaId: String) {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        _uiState.value = _uiState.value.copy(error = "", message = "Offloading video...")
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                repository.offloadItem(serverUrl, mediaId)
+            }.onSuccess { response ->
+                if (response.status != "offloaded") {
+                    throw IllegalStateException("Could not offload the video.")
+                }
+                _uiState.value = _uiState.value.copy(error = "", message = "Video offloaded.")
+                refreshCurrentContext()
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    error = error.message ?: "Could not offload the video.",
+                    message = "",
+                )
+            }
+        }
+    }
+
     fun selectChannel(channel: ChannelSummary) {
         _uiState.value = _uiState.value.copy(
             selectedChannel = channel,
@@ -150,6 +192,12 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private fun refreshCurrentContext() {
+        refreshLibrary()
+        refreshChannels()
+        _uiState.value.selectedPlaylist?.let(::loadPlaylistContent)
     }
 
     private fun loadChannelContent(channel: ChannelSummary) {

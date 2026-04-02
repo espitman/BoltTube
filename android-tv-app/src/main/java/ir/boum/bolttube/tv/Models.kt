@@ -139,6 +139,11 @@ data class OffloadedDownloadStatus(
 )
 
 @Serializable
+data class ActionStatusResponse(
+    val status: String = "",
+)
+
+@Serializable
 data class PlaylistItemsResponse(
     val items: List<MediaSummary> = emptyList(),
 )

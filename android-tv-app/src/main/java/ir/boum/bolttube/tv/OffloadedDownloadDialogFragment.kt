@@ -1,5 +1,6 @@
 package ir.boum.bolttube.tv
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -42,6 +43,7 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
             selectedFormatId = format.id
             qualityAdapter.submit(formats, selectedFormatId)
             updateButtons()
+            startButton.post { startButton.requestFocus() }
         }
     }
 
@@ -190,7 +192,14 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
                     "completed" -> {
                         isDownloading = false
                         viewModel.refreshAll()
-                        delay(900)
+                        val streamUrl = status.streamUrl.ifBlank { viewModel.absoluteMediaUrl("/media/$mediaId") }
+                        startActivity(
+                            Intent(requireContext(), VideoPlayerActivity::class.java)
+                                .putExtra(VideoPlayerActivity.EXTRA_STREAM_URL, streamUrl)
+                                .putExtra(VideoPlayerActivity.EXTRA_TITLE, status.title.ifBlank { titleView.text.toString() })
+                                .putExtra(VideoPlayerActivity.EXTRA_ID, mediaId),
+                        )
+                        delay(300)
                         dismissAllowingStateLoss()
                         return@launch
                     }
@@ -331,8 +340,8 @@ private class TvQualityAdapter(
             boundItem = item
             this.selected = selected
             (itemView.layoutParams as? RecyclerView.LayoutParams)?.let { params ->
-                params.marginStart = if (isFirst) dp(itemView, 2) else 0
-                params.marginEnd = if (isLast) dp(itemView, 2) else dp(itemView, 6)
+                params.marginStart = if (isFirst) dp(itemView, 16) else 0
+                params.marginEnd = if (isLast) dp(itemView, 16) else dp(itemView, 8)
                 itemView.layoutParams = params
             }
             titleView.text = item.title

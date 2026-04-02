@@ -1,7 +1,6 @@
 package ir.boum.bolttube.tv
 
 import android.content.Intent
-import android.graphics.Rect
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -60,9 +59,13 @@ class TvBrowseFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        libraryAdapter = TvVideoCardAdapter(::openVideo)
+        libraryAdapter = TvVideoCardAdapter(
+            onClick = ::openVideo,
+            onLongClick = ::openVideoActions,
+        )
         playlistAdapter = TvVideoCardAdapter(
             onClick = ::openVideo,
+            onLongClick = ::openVideoActions,
             nextFocusUpProvider = { pos -> if (pos < 3) R.id.playlistBackButton else View.NO_ID }
         )
 
@@ -138,6 +141,14 @@ class TvBrowseFragment : Fragment() {
                 .putExtra(VideoPlayerActivity.EXTRA_TITLE, item.title)
                 .putExtra(VideoPlayerActivity.EXTRA_ID, item.id),
         )
+    }
+
+    private fun openVideoActions(item: VideoItem) {
+        TvVideoActionsDialogFragment.newInstance(
+            mediaId = item.id,
+            title = item.title,
+            isOffloaded = item.isOffloaded,
+        ).show(parentFragmentManager, "video_actions")
     }
 
     private fun ensureSectionVisible(sectionView: View, focusedCardView: View) {
@@ -292,6 +303,7 @@ class TvBrowseFragment : Fragment() {
             val itemsView = sectionView.findViewById<RecyclerView>(R.id.sectionItems)
             val adapter = TvVideoCardAdapter(
                 onClick = ::openVideo,
+                onLongClick = ::openVideoActions,
                 onFocusGained = { focusedCard -> ensureSectionVisible(sectionView, focusedCard) },
                 horizontalCardWidthPx = homeCardWidthPx(),
                 nextFocusUpId = if (index == 0) R.id.channelBackButton else View.NO_ID,
@@ -328,6 +340,7 @@ private data class TvChannelSectionModel(
 
 private class TvVideoCardAdapter(
     private val onClick: (VideoItem) -> Unit,
+    private val onLongClick: (VideoItem) -> Unit,
     private val onFocusGained: ((View) -> Unit)? = null,
     private val horizontalCardWidthPx: Int? = null,
     private val nextFocusUpId: Int = View.NO_ID,
@@ -356,7 +369,7 @@ private class TvVideoCardAdapter(
                 RecyclerView.LayoutParams.WRAP_CONTENT,
             )
         }
-        return VideoViewHolder(view, onClick, onFocusGained)
+        return VideoViewHolder(view, onClick, onLongClick, onFocusGained)
     }
 
     override fun onBindViewHolder(holder: VideoViewHolder, position: Int) {
@@ -376,6 +389,7 @@ private class TvVideoCardAdapter(
     class VideoViewHolder(
         itemView: View,
         private val onClick: (VideoItem) -> Unit,
+        private val onLongClick: (VideoItem) -> Unit,
         private val onFocusGained: ((View) -> Unit)?,
     ) : RecyclerView.ViewHolder(itemView) {
         private val imageView = itemView.findViewById<ImageView>(R.id.cardImage)
@@ -389,8 +403,13 @@ private class TvVideoCardAdapter(
         private val prefs = itemView.context.getSharedPreferences("bolttube_progress", android.content.Context.MODE_PRIVATE)
 
         init {
+            itemView.isLongClickable = true
             itemView.setOnClickListener {
                 boundItem?.let(onClick)
+            }
+            itemView.setOnLongClickListener {
+                boundItem?.let(onLongClick)
+                true
             }
             itemView.setOnFocusChangeListener { view, hasFocus ->
                 view.animate()

@@ -86,6 +86,22 @@ class MediaRepository {
         return client.get("$normalized/api/offloaded/download-status/$mediaId").body()
     }
 
+    suspend fun deleteItem(serverUrl: String, mediaId: String): ActionStatusResponse {
+        val normalized = serverUrl.trim().trimEnd('/')
+        return client.post("$normalized/api/delete") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("id" to mediaId))
+        }.body()
+    }
+
+    suspend fun offloadItem(serverUrl: String, mediaId: String): ActionStatusResponse {
+        val normalized = serverUrl.trim().trimEnd('/')
+        return client.post("$normalized/api/offload") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("id" to mediaId))
+        }.body()
+    }
+
     fun close() {
         client.close()
     }
