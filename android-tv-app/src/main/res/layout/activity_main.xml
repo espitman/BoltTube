@@ -32,8 +32,7 @@
                 <ImageView
                     android:layout_width="28dp"
                     android:layout_height="28dp"
-                    android:background="@drawable/ic_tv_launcher"
-                    android:backgroundTint="@color/tv_accent" />
+                    android:src="@drawable/ic_tv_launcher" />
 
                 <TextView
                     android:layout_width="wrap_content"

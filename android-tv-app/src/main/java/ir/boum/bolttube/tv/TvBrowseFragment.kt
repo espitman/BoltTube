@@ -266,6 +266,7 @@ class TvBrowseFragment : Fragment() {
             streamUrl = viewModel.absoluteMediaUrl(item.streamUrl),
             createdAt = item.createdAt,
             duration = item.duration,
+            isOffloaded = !item.isDownloaded,
         )
     }
 
@@ -372,6 +373,7 @@ private class TvVideoCardAdapter(
         private val titleView = itemView.findViewById<TextView>(R.id.cardTitle)
         private val dateView = itemView.findViewById<TextView>(R.id.cardDate)
         private val badgeView = itemView.findViewById<TextView>(R.id.cardSubtitle)
+        private val uploadBadgeView = itemView.findViewById<TextView>(R.id.cardUploadBadge)
         private val progressBg = itemView.findViewById<View>(R.id.cardProgressBackground)
         private val progressFill = itemView.findViewById<View>(R.id.cardProgressFill)
         private var boundItem: VideoItem? = null
@@ -408,6 +410,9 @@ private class TvVideoCardAdapter(
             } else {
                 badgeView.visibility = View.GONE
             }
+
+            uploadBadgeView.visibility = if (item.isOffloaded) View.VISIBLE else View.GONE
+            imageView.alpha = if (item.isOffloaded) 0.5f else 1f
 
             if (isPersian(item.title)) {
                 try {

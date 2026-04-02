@@ -22,8 +22,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:textColor="@color/sidebar_text_selector"
-        android:textSize="14sp"
-        android:textStyle="bold" />
+        android:textSize="14sp" />
 
     <TextView
         android:id="@+id/sidebarChannelMeta"

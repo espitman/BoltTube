@@ -18,6 +18,10 @@ data class MediaSummary(
     val createdAt: String,
     @SerialName("thumbnail_url")
     val thumbnailUrl: String? = null,
+    @SerialName("source_url")
+    val sourceUrl: String = "",
+    @SerialName("is_downloaded")
+    val isDownloaded: Boolean = true,
     val duration: Int = 0,
 )
 
@@ -84,6 +88,7 @@ data class VideoItem(
     val streamUrl: String,
     val createdAt: String,
     val duration: Int,
+    val isOffloaded: Boolean,
 ) : TvRowItem
 
 @Serializable
