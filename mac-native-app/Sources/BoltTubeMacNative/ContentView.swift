@@ -104,7 +104,7 @@ struct ContentView: View {
                         Text("Add New Video").font(.vazir(size: 14, weight: .bold)).foregroundStyle(slate900)
                         HStack(spacing: 0) {
                             TextField("Paste YouTube video link here...", text: Bindable(controller).videoURL).textFieldStyle(.plain).font(.vazir(size: 14)).foregroundStyle(slate900).padding(.horizontal, 20).padding(.vertical, 14).onSubmit { controller.scheduleQualityRefresh() }
-                            Button { if let s = NSPasteboard.general.string(forType: .string) { controller.videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines); controller.scheduleQualityRefresh() } } label: { Text("Paste").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 28).padding(.vertical, 14) }.buttonStyle(.plain).background(accentRed)
+                            Button { if let s = NSPasteboard.general.string(forType: .string) { controller.videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines); controller.scheduleQualityRefresh() } } label: { Text("Paste").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 28).padding(.vertical, 14).background(accentRed).contentShape(Rectangle()) }.buttonStyle(.plain)
                         }.background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.1), lineWidth: 1) }
                     }
                     previewArea(); downloadControls()
