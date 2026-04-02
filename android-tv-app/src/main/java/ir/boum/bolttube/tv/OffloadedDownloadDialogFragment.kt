@@ -1,6 +1,8 @@
 package ir.boum.bolttube.tv
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -110,6 +112,7 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
 
     override fun onStart() {
         super.onStart()
+        dialog?.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog?.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.72f).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT,

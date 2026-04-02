@@ -48,7 +48,10 @@ def sanitize_filename(name: str) -> str:
 def _emit_event(payload: Dict[str, Any], progress_callback=None):
     if progress_callback is not None:
         progress_callback(payload)
-    print(json.dumps(payload), file=sys.stderr, flush=True)
+    try:
+        print(json.dumps(payload), file=sys.stderr, flush=True)
+    except (BrokenPipeError, OSError):
+        pass
 
 def _run_bridge_cli(command: str, *, url: Optional[str] = None, format_id: Optional[str] = None, media_id: Optional[str] = None) -> Dict[str, Any]:
     if library is None:
