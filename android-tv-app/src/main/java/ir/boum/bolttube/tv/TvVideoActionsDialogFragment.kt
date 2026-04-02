@@ -31,9 +31,9 @@ class TvVideoActionsDialogFragment : DialogFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val titleView = view.findViewById<TextView>(R.id.actionDialogTitle)
-        val offloadButton = view.findViewById<TextView>(R.id.actionOffloadButton)
-        val deleteButton = view.findViewById<TextView>(R.id.actionDeleteButton)
-        val cancelButton = view.findViewById<TextView>(R.id.actionCancelButton)
+        val offloadButton = view.findViewById<View>(R.id.actionOffloadButton)
+        val deleteButton = view.findViewById<View>(R.id.actionDeleteButton)
+        val cancelButton = view.findViewById<View>(R.id.actionCancelButton)
 
         val mediaId = requireArguments().getString(ARG_MEDIA_ID).orEmpty()
         val title = requireArguments().getString(ARG_TITLE).orEmpty()
@@ -41,6 +41,16 @@ class TvVideoActionsDialogFragment : DialogFragment() {
 
         titleView.text = title
         offloadButton.visibility = if (isOffloaded) View.GONE else View.VISIBLE
+
+        listOf(offloadButton, deleteButton, cancelButton).forEach { button ->
+            button.setOnFocusChangeListener { v, hasFocus ->
+                v.animate()
+                    .scaleX(if (hasFocus) 1.04f else 1f)
+                    .scaleY(if (hasFocus) 1.04f else 1f)
+                    .setDuration(150)
+                    .start()
+            }
+        }
 
         offloadButton.setOnClickListener {
             dismiss()
@@ -55,8 +65,9 @@ class TvVideoActionsDialogFragment : DialogFragment() {
         }
 
         val initialFocusId = if (isOffloaded) R.id.actionDeleteButton else R.id.actionOffloadButton
-        view.findViewById<View>(initialFocusId)?.post {
-            view.findViewById<View>(initialFocusId)?.requestFocus()
+        val initialFocusView = view.findViewById<View>(initialFocusId)
+        initialFocusView?.post {
+            initialFocusView.requestFocus()
         }
     }
 

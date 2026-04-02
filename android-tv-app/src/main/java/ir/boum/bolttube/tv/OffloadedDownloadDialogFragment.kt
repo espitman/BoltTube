@@ -363,16 +363,12 @@ private class TvQualityAdapter(
                 hasFocus -> R.drawable.bg_tv_quality_option_focused
                 else -> R.drawable.bg_tv_quality_option_idle
             }
-            val primaryColor = if (selected) android.R.color.white else R.color.tv_text
-            val secondaryColor = if (selected) android.R.color.white else R.color.tv_muted
+            val primaryColor = android.R.color.white
+            val secondaryColor = if (selected || hasFocus) android.R.color.white else R.color.slate_400
+            
             itemView.background = ContextCompat.getDrawable(itemView.context, backgroundRes)
             titleView.setTextColor(ContextCompat.getColor(itemView.context, primaryColor))
-            subtitleView.setTextColor(
-                ContextCompat.getColor(
-                    itemView.context,
-                    if (selected) android.R.color.white else secondaryColor,
-                ),
-            )
+            subtitleView.setTextColor(ContextCompat.getColor(itemView.context, secondaryColor))
         }
 
         private fun dp(view: View, value: Int): Int {

@@ -8,6 +8,7 @@
     android:focusable="true"
     android:focusableInTouchMode="true"
     android:orientation="vertical"
+    android:layout_marginHorizontal="6dp"
     android:paddingHorizontal="10dp"
     android:paddingVertical="8dp">
 
@@ -16,9 +17,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:ellipsize="end"
+        android:fontFamily="@font/vazir"
         android:gravity="center_horizontal"
         android:maxLines="1"
-        android:textColor="@color/tv_text"
+        android:textColor="@android:color/white"
         android:textSize="13sp"
         android:textStyle="bold" />
 
@@ -28,9 +30,10 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
         android:ellipsize="end"
+        android:fontFamily="@font/vazir"
         android:gravity="center_horizontal"
         android:maxLines="1"
-        android:textColor="@color/tv_muted"
+        android:textColor="@color/slate_400"
         android:textSize="9sp" />
 
 </LinearLayout>
