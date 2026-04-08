@@ -20,6 +20,11 @@ from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 from pytubefix import YouTube
 
+try:
+    mp.set_start_method("spawn")
+except RuntimeError:
+    pass
+
 # Import local modules
 try:
     from library import MediaLibrary
@@ -732,7 +737,7 @@ def main():
         client = args.preferred_client or _client_candidates(args.url)[0]
         print(json.dumps(_download_with_progress(args.url, args.format_id, client, args.media_id)))
     elif args.command == "add-offloaded":
-        payload = _resolve_payload_with_fallback(args.url)
+        payload = _fetch_youtube_api_metadata(args.url)
         item = library.add_offloaded(
             source_url=args.url,
             thumbnail_url=str(payload.get("thumbnail_url") or ""),
@@ -754,7 +759,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-try:
-    mp.set_start_method("spawn")
-except RuntimeError:
-    pass
