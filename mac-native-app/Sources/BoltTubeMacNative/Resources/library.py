@@ -3,6 +3,7 @@ import sqlite3
 import uuid
 import subprocess
 import threading
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -50,6 +51,7 @@ class MediaLibrary:
                 result.append({
                     "id": str(r["id"]),
                     "file_name": str(r.get("file_name") or ""),
+                    "file_path": str(r.get("file_path") or ""),
                     "title": str(final_title or ""),
                     "stream_url": str(r.get("stream_url") or ""),
                     "size": str(r.get("size") or ""),
@@ -206,6 +208,36 @@ class MediaLibrary:
                 is_downloaded=0,
             )
             self.repo.save_item(item)
+            return item
+
+    def import_downloaded_file(
+        self,
+        *,
+        file_path: Path,
+        source_url: str = "",
+        thumbnail_url: str = "",
+        duration: int = 0,
+        title: str = "",
+        existing_media_id: Optional[str] = None,
+    ) -> MediaItem:
+        with self._lock:
+            source = file_path.expanduser()
+            if not source.exists() or not source.is_file():
+                raise FileNotFoundError(f"File not found: {source}")
+
+            suffix = source.suffix or ".mp4"
+            staging_path = self.download_dir / f"import-{uuid.uuid4().hex[:8]}{suffix}"
+            shutil.copy2(source, staging_path)
+
+            item = self.add(
+                source_url=source_url,
+                file_path=staging_path,
+                thumbnail_url=thumbnail_url,
+                duration=duration,
+                title=title or source.stem,
+                is_downloaded=1,
+                existing_media_id=existing_media_id,
+            )
             return item
 
 def readable_size_internal(num: int) -> str:

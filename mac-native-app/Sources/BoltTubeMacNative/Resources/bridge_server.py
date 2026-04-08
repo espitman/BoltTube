@@ -10,6 +10,9 @@ import time
 import uuid
 import threading
 from pathlib import Path
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
 from urllib.parse import unquote
 from typing import Optional, List, Dict, Union, Any
 
@@ -29,7 +32,11 @@ app = Flask(__name__)
 CORS(app)
 library: Optional[MediaLibrary] = None
 RESOLVE_CLIENTS = ("ANDROID_VR", "IOS", "TV", "WEB")
-CLIENT_PROBE_TIMEOUT = 6
+CLIENT_PROBE_TIMEOUT = 10
+YOUTUBE_DATA_API_KEY = os.environ.get("BOLTTUBE_YOUTUBE_API_KEY", "")
+YOUTUBE_DATA_API_URL = "https://www.googleapis.com/youtube/v3/videos"
+YOUTUBE_API_RETRIES = 3
+YOUTUBE_API_TIMEOUT = 8
 download_jobs: Dict[str, Dict[str, Any]] = {}
 download_jobs_lock = threading.RLock()
 resolved_client_cache: Dict[str, str] = {}
@@ -89,6 +96,63 @@ def _stable_t(url: str, yt: Optional[YouTube] = None) -> str:
     v_id = _extract_id(url)
     return f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg" if v_id else (yt.thumbnail_url if yt else "")
 
+def _parse_iso8601_duration(value: str) -> int:
+    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value or "")
+    if not match:
+        return 0
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    return hours * 3600 + minutes * 60 + seconds
+
+def _best_thumbnail(snippet: Dict[str, Any]) -> str:
+    thumbnails = snippet.get("thumbnails") or {}
+    for key in ("maxres", "standard", "high", "medium", "default"):
+        url = ((thumbnails.get(key) or {}).get("url") or "").strip()
+        if url:
+            return url
+    return ""
+
+def _fetch_youtube_api_metadata(url: str) -> Dict[str, Any]:
+    video_id = _extract_id(url)
+    if not video_id:
+        raise RuntimeError("Invalid YouTube URL")
+    if not YOUTUBE_DATA_API_KEY:
+        raise RuntimeError("Missing YouTube Data API key")
+
+    query = urlparse.urlencode({
+        "part": "snippet,contentDetails",
+        "id": video_id,
+        "key": YOUTUBE_DATA_API_KEY,
+    })
+    request_url = f"{YOUTUBE_DATA_API_URL}?{query}"
+    last_error: Optional[Exception] = None
+
+    for attempt in range(YOUTUBE_API_RETRIES):
+        try:
+            request = urlrequest.Request(request_url, headers={"Accept": "application/json"})
+            with urlrequest.urlopen(request, timeout=YOUTUBE_API_TIMEOUT) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            items = payload.get("items") or []
+            if not items:
+                raise RuntimeError("Video metadata not found")
+            item = items[0]
+            snippet = item.get("snippet") or {}
+            content_details = item.get("contentDetails") or {}
+            return {
+                "title": (snippet.get("title") or "").strip(),
+                "thumbnail_url": _best_thumbnail(snippet),
+                "duration_seconds": _parse_iso8601_duration(str(content_details.get("duration") or "")),
+            }
+        except (urlerror.HTTPError, urlerror.URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as error:
+            last_error = error
+            if attempt < YOUTUBE_API_RETRIES - 1:
+                time.sleep(0.75 * (attempt + 1))
+                continue
+            break
+
+    raise RuntimeError(str(last_error) if last_error else "YouTube metadata request failed")
+
 def _probe_client_worker(url: str, client: str, result_queue):
     url = _canonicalize_youtube_url(url)
     try:
@@ -115,7 +179,7 @@ def _remember_resolved_client(url: str, client: str):
         resolved_client_cache[canonical] = client
 
 def _choose_client(url: str) -> str:
-    ctx = mp.get_context("fork")
+    ctx = mp.get_context("spawn")
     last_error = "metadata probe failed"
     for client in _client_candidates(url):
         result_queue = ctx.Queue()
@@ -135,10 +199,9 @@ def _choose_client(url: str) -> str:
             last_error = result.get("error") or f"{client} failed"
     raise RuntimeError(last_error)
 
-def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
+def _build_formats_payload(url: str, client: str) -> Dict[str, Any]:
     url = _canonicalize_youtube_url(url)
     yt = YouTube(url, client=client)
-    thumb = _stable_t(url, yt)
     
     # Try getting mp4 streams first (preferred for compatibility)
     streams = yt.streams.filter(file_extension="mp4").order_by("resolution")
@@ -166,22 +229,29 @@ def _build_resolve_payload(url: str, client: str) -> Dict[str, Any]:
             if s.resolution and s.resolution not in seen_res:
                 seen_res.add(s.resolution)
                 formats.append({"id": str(s.itag), "title": s.resolution, "details": "progressive", "filesize": readable_size(s.filesize or 0)})
-                
-    return {"title": yt.title, "thumbnail_url": thumb, "duration_seconds": int(getattr(yt, "length", 0)), "formats": formats}
 
-def _resolve_payload_worker(url: str, client: str, result_queue):
+    return {"formats": formats}
+
+def _resolve_formats_worker(url: str, client: str, result_queue):
     try:
-        payload = _build_resolve_payload(url, client)
+        payload = _build_formats_payload(url, client)
         result_queue.put({"ok": True, "client": client, "payload": payload})
     except Exception as error:
         result_queue.put({"ok": False, "client": client, "error": str(error)})
 
 def _resolve_payload_with_fallback(url: str) -> Dict[str, Any]:
-    ctx = mp.get_context("fork")
+    metadata_error = None
+    metadata_payload: Dict[str, Any] = {"title": "", "thumbnail_url": "", "duration_seconds": 0}
+    try:
+        metadata_payload = _fetch_youtube_api_metadata(url)
+    except Exception as error:
+        metadata_error = error
+
+    ctx = mp.get_context("spawn")
     last_error = "metadata probe failed"
     for client in _client_candidates(url):
         result_queue = ctx.Queue()
-        process = ctx.Process(target=_resolve_payload_worker, args=(url, client, result_queue))
+        process = ctx.Process(target=_resolve_formats_worker, args=(url, client, result_queue))
         process.start()
         process.join(CLIENT_PROBE_TIMEOUT)
         if process.is_alive():
@@ -193,11 +263,19 @@ def _resolve_payload_with_fallback(url: str) -> Dict[str, Any]:
             result = result_queue.get()
             if result.get("ok"):
                 _remember_resolved_client(url, client)
-                payload = result.get("payload") or {}
+                payload = metadata_payload.copy()
+                payload.update(result.get("payload") or {})
                 payload["resolved_client"] = client
                 return payload
             last_error = result.get("error") or f"{client} failed"
-    raise RuntimeError(last_error)
+
+    if metadata_payload.get("title") or metadata_payload.get("thumbnail_url") or metadata_payload.get("duration_seconds"):
+        payload = metadata_payload.copy()
+        payload["formats"] = []
+        payload["resolved_client"] = ""
+        return payload
+
+    raise RuntimeError(str(metadata_error) if metadata_error else last_error)
 
 def _load_stream_for_format(url: str, format_id: str, preferred_client: Optional[str] = None):
     url = _canonicalize_youtube_url(url)
@@ -358,12 +436,25 @@ def _start_offloaded_download(media_id: str, url: str, format_id: str, preferred
     return download_jobs[media_id]
 
 def _add_offloaded_item(url: str, client: str) -> Dict[str, Any]:
-    payload = _build_resolve_payload(url, client)
+    payload = _resolve_payload_with_fallback(url)
     item = library.add_offloaded(
         source_url=url,
         thumbnail_url=str(payload.get("thumbnail_url") or ""),
         duration=int(payload.get("duration_seconds") or 0),
         title=str(payload.get("title") or "Untitled"),
+    )
+    return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
+
+def _import_downloaded_file(file_path: str, source_url: str = "", title: str = "", thumbnail_url: str = "", duration: int = 0, media_id: str = "") -> Dict[str, Any]:
+    if library is None:
+        raise RuntimeError("Library not initialized")
+    item = library.import_downloaded_file(
+        file_path=Path(file_path),
+        source_url=source_url,
+        thumbnail_url=thumbnail_url,
+        duration=duration,
+        title=title,
+        existing_media_id=media_id or None,
     )
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
@@ -413,6 +504,7 @@ def get_playlist_items(p_id):
     items = [{
         "id": str(item["id"]),
         "file_name": str(item.get("file_name") or ""),
+        "file_path": str(item.get("file_path") or ""),
         "stream_url": str(item.get("stream_url") or ""),
         "size": str(item.get("size") or ""),
         "created_at": str(item.get("created_at") or ""),
@@ -434,6 +526,7 @@ def get_channel_content(channel_id):
         items = [{
             "id": str(item["id"]),
             "file_name": str(item.get("file_name") or ""),
+            "file_path": str(item.get("file_path") or ""),
             "title": str(item.get("title") or item["file_name"].replace(".mp4", "")),
             "stream_url": str(item.get("stream_url") or ""),
             "size": str(item.get("size") or ""),
@@ -587,6 +680,26 @@ def add_offloaded():
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 504
 
+@app.route("/api/import-file", methods=["POST"])
+def import_file():
+    data = request.json or {}
+    file_path = data.get("filePath")
+    if not file_path:
+        return jsonify({"error": "Missing file path"}), 400
+    try:
+        return jsonify(_import_downloaded_file(
+            file_path=file_path,
+            source_url=data.get("sourceUrl", "") or "",
+            title=data.get("title", "") or "",
+            thumbnail_url=data.get("thumbnailUrl", "") or "",
+            duration=int(data.get("durationSeconds") or 0),
+            media_id=data.get("mediaId", "") or "",
+        ))
+    except FileNotFoundError as error:
+        return jsonify({"error": str(error)}), 404
+    except RuntimeError as error:
+        return jsonify({"error": str(error)}), 500
+
 @app.route("/api/delete", methods=["POST"])
 def delete():
     return jsonify({"status": "deleted" if library.remove(request.json["id"]) else "not_found"})
@@ -604,17 +717,19 @@ def refresh():
 def main():
     global library
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["serve", "resolve", "download-progress", "add-offloaded", "list", "delete"])
-    parser.add_argument("--download-dir", type=Path, required=True); parser.add_argument("--url"); parser.add_argument("--format-id"); parser.add_argument("--port", type=int, default=9864); parser.add_argument("--media-id")
+    parser.add_argument("command", choices=["serve", "metadata", "resolve", "download-progress", "add-offloaded", "import-file", "list", "delete"])
+    parser.add_argument("--download-dir", type=Path, required=True); parser.add_argument("--url"); parser.add_argument("--format-id"); parser.add_argument("--port", type=int, default=9864); parser.add_argument("--media-id"); parser.add_argument("--preferred-client"); parser.add_argument("--file-path"); parser.add_argument("--source-url"); parser.add_argument("--title"); parser.add_argument("--thumbnail-url"); parser.add_argument("--duration", type=int, default=0)
     args = parser.parse_args()
     library = MediaLibrary(args.download_dir)
     
     if args.command == "serve":
         app.run(host="0.0.0.0", port=args.port, threaded=True)
+    elif args.command == "metadata":
+        print(json.dumps(_fetch_youtube_api_metadata(args.url)))
     elif args.command == "resolve":
         print(json.dumps(_resolve_payload_with_fallback(args.url)))
     elif args.command == "download-progress":
-        client = _choose_client(args.url)
+        client = args.preferred_client or _client_candidates(args.url)[0]
         print(json.dumps(_download_with_progress(args.url, args.format_id, client, args.media_id)))
     elif args.command == "add-offloaded":
         payload = _resolve_payload_with_fallback(args.url)
@@ -625,8 +740,21 @@ def main():
             title=str(payload.get("title") or "Untitled"),
         )
         print(json.dumps({"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}))
+    elif args.command == "import-file":
+        print(json.dumps(_import_downloaded_file(
+            file_path=args.file_path,
+            source_url=args.source_url or "",
+            title=args.title or "",
+            thumbnail_url=args.thumbnail_url or "",
+            duration=args.duration or 0,
+            media_id=args.media_id or "",
+        )))
     elif args.command == "list": print(json.dumps({"items": library.list_items()}))
     elif args.command == "delete": print(json.dumps({"status": "deleted" if library.remove(args.media_id) else "not_found"}))
 
 if __name__ == "__main__":
     main()
+try:
+    mp.set_start_method("spawn")
+except RuntimeError:
+    pass

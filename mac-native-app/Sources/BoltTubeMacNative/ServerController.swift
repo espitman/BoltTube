@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import IOKit.pwr_mgt
+import UniformTypeIdentifiers
 
 #if SWIFT_PACKAGE
 private let appResourceBundle = Bundle.module
@@ -15,8 +16,10 @@ private func bundledResourceURL(named name: String, withExtension ext: String) -
     return nil
 }
 
+private let youtubeDataAPIKey = "AIzaSyBzDuWdCTGaMn20glWGBjsZYq0WT18KFa4"
+
 struct MediaLibraryItem: Codable, Identifiable, Hashable {
-    let id: String; let fileName: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?; let isDownloaded: Bool?
+    let id: String; let fileName: String?; let filePath: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?; let isDownloaded: Bool?
 }
 
 struct Playlist: Codable, Identifiable, Hashable {
@@ -40,7 +43,8 @@ private final class DownloadStreamState: @unchecked Sendable {
 
 struct RemoteFormat: Codable, Identifiable, Hashable { let id: String; let title: String; let details: String; let filesize: String }
 struct DownloadTask: Identifiable, Hashable { let id: String; let title: String; var status: String; var progress: Double }
-struct ResolveResponse: Codable { let title: String; let thumbnailUrl: String; let durationSeconds: Int; let formats: [RemoteFormat] }
+struct ResolveResponse: Codable { let title: String; let thumbnailUrl: String; let durationSeconds: Int; let formats: [RemoteFormat]; let resolvedClient: String }
+struct MetadataResponse: Codable { let title: String; let thumbnailUrl: String; let durationSeconds: Int }
 struct ChannelContent: Codable, Identifiable, Hashable { var id: Int { playlist.id }; let playlist: Playlist; let items: [MediaLibraryItem] }
 struct ChannelContentResponse: Codable { let content: [ChannelContent] }
 struct HealthResponse: Codable { let status: String; let port: Int; let downloadDir: String }
@@ -48,13 +52,13 @@ struct HealthResponse: Codable { let status: String; let port: Int; let download
 @Observable
 @MainActor
 final class ServerController {
-    var videoURL = ""; var resolvedTitle = ""; var resolvedThumbnailUrl = ""; var resolvedDurationSeconds: Int = 0; var lastDownloadedFileName = ""; var formats: [RemoteFormat] = []; var selectedFormatID = "best"
+    var videoURL = ""; var resolvedTitle = ""; var resolvedThumbnailUrl = ""; var resolvedDurationSeconds: Int = 0; var resolvedClient = ""; var lastDownloadedFileName = ""; var formats: [RemoteFormat] = []; var selectedFormatID = "best"
     var libraryItems: [MediaLibraryItem] = []; var playlists: [Playlist] = []; var channels: [Channel] = []; var refreshingIDs: Set<String> = []; var logs: String = ""
     var selectedPlaylist: Playlist? = nil; var playlistItems: [MediaLibraryItem] = []; var isFetchingPlaylistItems = false
     var selectedChannel: Channel? = nil; var channelContent: [ChannelContent] = []; var isFetchingChannelContent = false
     var activeManagementTab: Int = 0 // 0: Channels, 1: Playlists
 
-    var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingQualities = false; var isDownloading = false; var isAddingOffloaded = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
+    var portText = "9864"; var isShareServerRunning = false; var isBusy = false; var isResolvingMetadata = false; var isResolvingQualities = false; var isDownloading = false; var isAddingOffloaded = false; var isImportingFile = false; var downloadProgress: Double = 0; var downloadProgressText = ""; var logText = "Ready.\n"; var lastHealthMessage = ""; var downloadDirectory: URL
     private var shareServerProcess: Process?; private var shareServerOutputPipe: Pipe?; private var qualityRefreshTask: Task<Void, Never>?; private var sleepAssertionID: IOPMAssertionID = 0; private var activeDownloadProcess: Process?; private var activeDownloadTempName: String = ""; private var lastProgressBytes: Double = 0; private var lastProgressTime: Date = Date()
 
     init() {
@@ -141,24 +145,115 @@ final class ServerController {
     func openDownloadDirectory() { ensureDirectoryExists(downloadDirectory); NSWorkspace.shared.open(downloadDirectory) }
     func pasteFromClipboard() {
         let pb = NSPasteboard.general; let value = pb.string(forType: .string) ?? pb.string(forType: .URL) ?? pb.string(forType: NSPasteboard.PasteboardType("public.url"))
-        if let value = value { let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines); appendLog("Pasted: \(trimmed.prefix(60))..."); videoURL = trimmed; scheduleQualityRefresh() }
+        if let value = value { let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines); appendLog("Pasted: \(trimmed.prefix(60))..."); videoURL = trimmed; scheduleMetadataRefresh() }
     }
-    func scheduleQualityRefresh() {
+
+    func importDownloadedFile(for item: MediaLibraryItem? = nil) async {
+        guard !isBusy else { return }
+        guard await ensurePythonReady() else { return }
+
+        let trimmedValue = (item?.sourceUrl ?? videoURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        let looksLikeLocalPath = FileManager.default.fileExists(atPath: NSString(string: trimmedValue).expandingTildeInPath)
+        let sourceFileURL: URL?
+
+        if looksLikeLocalPath {
+            sourceFileURL = URL(fileURLWithPath: NSString(string: trimmedValue).expandingTildeInPath)
+        } else {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = "Import"
+            panel.allowedContentTypes = [.movie, .mpeg4Movie, .quickTimeMovie]
+            sourceFileURL = panel.runModal() == .OK ? panel.url : nil
+        }
+
+        guard let fileURL = sourceFileURL else { return }
+
+        let metadataSourceURL: String
+        if looksLikeLocalPath {
+            metadataSourceURL = ""
+        } else if trimmedValue.hasPrefix("http://") || trimmedValue.hasPrefix("https://") {
+            metadataSourceURL = trimmedValue
+        } else {
+            metadataSourceURL = ""
+        }
+
+        isBusy = true
+        isImportingFile = true
+        defer { isBusy = false; isImportingFile = false }
+
+        do {
+            var arguments = [
+                bridgeScriptURL.path,
+                "import-file",
+                "--download-dir", downloadDirectory.path,
+                "--file-path", fileURL.path,
+                "--duration", "\(resolvedDurationSeconds)"
+            ]
+            if !metadataSourceURL.isEmpty {
+                arguments.append(contentsOf: ["--source-url", metadataSourceURL])
+            }
+            if !resolvedTitle.isEmpty {
+                arguments.append(contentsOf: ["--title", resolvedTitle])
+            }
+            if !resolvedThumbnailUrl.isEmpty {
+                arguments.append(contentsOf: ["--thumbnail-url", resolvedThumbnailUrl])
+            }
+            if let item, !item.id.isEmpty {
+                arguments.append(contentsOf: ["--media-id", item.id])
+            }
+            if let item, metadataSourceURL.isEmpty, let sourceURL = item.sourceUrl, !sourceURL.isEmpty {
+                arguments.append(contentsOf: ["--source-url", sourceURL])
+            }
+            if let item, resolvedTitle.isEmpty, let title = item.title, !title.isEmpty {
+                arguments.append(contentsOf: ["--title", title])
+            }
+            if let item, resolvedThumbnailUrl.isEmpty, let thumb = item.thumbnailUrl, !thumb.isEmpty {
+                arguments.append(contentsOf: ["--thumbnail-url", thumb])
+            }
+            if let item, resolvedDurationSeconds == 0, let duration = item.duration, duration > 0 {
+                arguments.append(contentsOf: ["--duration", "\(duration)"])
+            }
+
+            let data = try await runJSONCommand(arguments: arguments, logOutput: false)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let response = try decoder.decode(DownloadResponse.self, from: data)
+            appendLog("Imported downloaded file: \(response.fileName)")
+            await refreshLibrary()
+            videoURL = ""
+            resetResolvedVideoState()
+        } catch {
+            appendLog("Import failed: \(error.localizedDescription)")
+        }
+    }
+    func scheduleMetadataRefresh() {
         qualityRefreshTask?.cancel(); let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); if trimmedURL.isEmpty { resetResolvedVideoState(); return }
-        qualityRefreshTask = Task { [weak self] in do { try await Task.sleep(for: .milliseconds(600)) } catch { return }; guard !Task.isCancelled else { return }; await self?.resolveQualities(for: trimmedURL) }
+        if FileManager.default.fileExists(atPath: NSString(string: trimmedURL).expandingTildeInPath) { resetResolvedVideoState(); return }
+        formats = []
+        selectedFormatID = "best"
+        resolvedClient = ""
+        qualityRefreshTask = Task { [weak self] in do { try await Task.sleep(for: .milliseconds(600)) } catch { return }; guard !Task.isCancelled else { return }; await self?.resolveMetadata(for: trimmedURL) }
     }
     func prepareOffloadedDownload(url: String) {
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedURL.isEmpty else { return }
         resetResolvedVideoState()
         videoURL = trimmedURL
-        scheduleQualityRefresh()
+    }
+
+    func prepareDownloadSelection() {
+        let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedURL.isEmpty else { return }
+        Task { await resolveQualities(for: trimmedURL) }
     }
 
     func resetResolvedVideoState() {
         resolvedTitle = ""
         resolvedThumbnailUrl = ""
         resolvedDurationSeconds = 0
+        resolvedClient = ""
         formats = []
         selectedFormatID = "best"
         downloadProgress = 0
@@ -174,6 +269,9 @@ final class ServerController {
         defer { isBusy = false; isDownloading = false }
         do {
             var arguments = [bridgeScriptURL.path, "download-progress", "--download-dir", downloadDirectory.path, "--url", url, "--format-id", selectedFormatID]
+            if !resolvedClient.isEmpty {
+                arguments.append(contentsOf: ["--preferred-client", resolvedClient])
+            }
             if let existingMediaID, !existingMediaID.isEmpty {
                 arguments.append(contentsOf: ["--media-id", existingMediaID])
             }
@@ -227,7 +325,21 @@ final class ServerController {
         do { appendLog("Refreshing metadata for \(id)..."); let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; appendLog("Metadata refreshed."); await refreshLibrary() } catch { appendLog("Refresh failed.") }
     }
 
-    func localURL(for item: MediaLibraryItem) -> URL { return URL(string: "\(lanURLDisplay)\(item.streamUrl ?? "")")! }
+    func localURL(for item: MediaLibraryItem) -> URL {
+        if let filePath = item.filePath, !filePath.isEmpty {
+            let localFileURL = URL(fileURLWithPath: filePath)
+            if FileManager.default.fileExists(atPath: localFileURL.path) {
+                return localFileURL
+            }
+        }
+        let baseURL = URL(string: lanURLDisplay)!
+        let rawPath = item.streamUrl ?? ""
+        let encodedPath = rawPath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? rawPath
+        if let resolvedURL = URL(string: encodedPath, relativeTo: baseURL)?.absoluteURL {
+            return resolvedURL
+        }
+        return baseURL
+    }
     func refreshLibrary() async {
         guard let url = URL(string: "\(serverURLDisplay)/api/list") else { return }
         do { 
@@ -301,7 +413,8 @@ final class ServerController {
     func checkHealth() async { guard let url = URL(string: "\(serverURLDisplay)/health") else { return }; do { let (data, _) = try await URLSession.shared.data(from: url); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(HealthResponse.self, from: data); lastHealthMessage = "Share server OK on port \(decoded.port)."; appendLog(lastHealthMessage) } catch { lastHealthMessage = "Health check failed."; appendLog(lastHealthMessage) } }
     private func ensurePythonReady() async -> Bool { if FileManager.default.fileExists(atPath: venvPythonURL.path) { return true }; appendLog("Preparing Python..."); await installPythonEnvironment(); return FileManager.default.fileExists(atPath: venvPythonURL.path) }
     private func installPythonEnvironment() async { do { ensureDirectoryExists(appSupportDirectory); ensureDirectoryExists(downloadDirectory); if !FileManager.default.fileExists(atPath: venvPythonURL.path) { try await runCommand(executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-m", "venv", venvDirectory.path]) }; try await runCommand(executable: venvPipURL, arguments: ["install", "-r", requirementsURL.path]); appendLog("Python ready.") } catch { appendLog("Python setup failed.") } }
-    private func resolveQualities(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingQualities = true; defer { isResolvingQualities = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "resolve", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(ResolveResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; let previousSelection = selectedFormatID; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds; formats = response.formats; selectedFormatID = response.formats.contains(where: { $0.id == previousSelection }) ? previousSelection : (response.formats.last?.id ?? "best") } catch { appendLog("Quality load failed.") } }
+    private func resolveMetadata(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingMetadata = true; defer { isResolvingMetadata = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "metadata", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(MetadataResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds } catch { appendLog("Metadata load failed.") } }
+    private func resolveQualities(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingQualities = true; defer { isResolvingQualities = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "resolve", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(ResolveResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; let previousSelection = selectedFormatID; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds; resolvedClient = response.resolvedClient; formats = response.formats; selectedFormatID = response.formats.contains(where: { $0.id == previousSelection }) ? previousSelection : (response.formats.last?.id ?? "best") } catch { appendLog("Quality load failed.") } }
     private var normalizedPort: String { let digits = portText.filter(\.isNumber); return digits.isEmpty ? "9864" : digits }
     private var appSupportDirectory: URL { FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/BoltTubeMacNative", directoryHint: .isDirectory) }
     private var venvDirectory: URL { appSupportDirectory.appending(path: ".venv", directoryHint: .isDirectory) }
@@ -314,7 +427,7 @@ final class ServerController {
     private func runDownloadCommand(arguments: [String]) async throws -> Data { try await withCheckedThrowingContinuation { continuation in let process = Process(); let outputPipe = Pipe(); let errorPipe = Pipe(); let state = DownloadStreamState(); process.executableURL = venvPythonURL; process.arguments = arguments; process.environment = mergedEnvironment(extra: ["PYTHONUNBUFFERED": "1"]); process.standardOutput = outputPipe; process.standardError = errorPipe; errorPipe.fileHandleForReading.readabilityHandler = { handle in let data = handle.availableData; guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }; let lines = state.append(text: text); Task { @MainActor [weak self] in for l in lines { self?.handleDownloadProgressLine(l) } } }; process.terminationHandler = { _ in Task { @MainActor [weak self] in self?.activeDownloadProcess = nil; self?.isDownloading = false; do { let d = try outputPipe.fileHandleForReading.readToEnd() ?? Data(); if state.markResumed() { continuation.resume(returning: d) } } catch { if state.markResumed() { continuation.resume(throwing: error) } } } }; do { try process.run(); Task { @MainActor [weak self] in self?.activeDownloadProcess = process } } catch { if state.markResumed() { continuation.resume(throwing: error) } } } }
     private func runCommand(executable: URL, arguments: [String]) async throws { try await Task.detached { let process = Process(); let pipe = Pipe(); process.executableURL = executable; process.arguments = arguments; process.environment = Self.staticMergedEnvironment(); process.standardOutput = pipe; process.standardError = pipe; try process.run(); process.waitUntilExit(); if process.terminationStatus != 0 { throw NSError(domain: "BoltTube", code: Int(process.terminationStatus)) } }.value }
     private func mergedEnvironment(extra: [String: String] = [:]) -> [String: String] { Self.staticMergedEnvironment(extra: extra) }
-    nonisolated private static func staticMergedEnvironment(extra: [String: String] = [:]) -> [String: String] { var environment = ProcessInfo.processInfo.environment; environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"; extra.forEach { environment[$0.key] = $0.value }; return environment }
+    nonisolated private static func staticMergedEnvironment(extra: [String: String] = [:]) -> [String: String] { var environment = ProcessInfo.processInfo.environment; environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"; environment["BOLTTUBE_YOUTUBE_API_KEY"] = youtubeDataAPIKey; extra.forEach { environment[$0.key] = $0.value }; return environment }
     private func ensureDirectoryExists(_ url: URL) { try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
     private func appendLog(_ message: String) { let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines); guard !trimmed.isEmpty else { return }; logText.append("\(trimmed)\n") }
     private func handleDownloadProgressLine(_ line: String) { guard let data = line.data(using: .utf8) else { return }; if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let event = json["event"] as? String { if event == "progress", let frac = json["fraction"] as? Double { downloadProgress = frac; let downloadedBytes = json["downloadedBytes"] as? Double ?? lastProgressBytes; let now = Date(); let elapsed = now.timeIntervalSince(lastProgressTime); let deltaBytes = max(0, downloadedBytes - lastProgressBytes); if elapsed >= 0.4, deltaBytes > 0 { downloadProgressText = "\(formatSpeed(bytesPerSecond: deltaBytes / elapsed))/s"; lastProgressBytes = downloadedBytes; lastProgressTime = now } else if downloadProgressText.isEmpty || downloadProgressText == "Starting download..." { downloadProgressText = "Calculating speed..." } } else if event == "starting" { appendLog("Starting..."); lastProgressBytes = 0; lastProgressTime = Date(); downloadProgressText = "Starting download..."; if let t = json["tempName"] as? String { activeDownloadTempName = t } } else if event == "merging" { downloadProgressText = "Merging..."; appendLog("Processing final file...") } } }

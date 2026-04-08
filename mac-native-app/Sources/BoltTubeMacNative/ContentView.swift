@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var itemToDelete: MediaLibraryItem? = nil
     @State private var playingItem: MediaLibraryItem? = nil
     @State private var offloadedItemToDownload: MediaLibraryItem? = nil
+    @State private var showDirectDownloadModal = false
     @State private var player: AVPlayer? = nil
     
     @State private var showCreatePlaylist = false
@@ -55,6 +56,7 @@ struct ContentView: View {
         }
         .overlay { if let _ = playingItem { playerOverlay() } }
         .sheet(item: $offloadedItemToDownload) { item in OffloadedDownloadModal(controller: controller, item: item) }
+        .sheet(isPresented: $showDirectDownloadModal) { DirectDownloadModal(controller: controller) }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
         .sheet(isPresented: $showCreatePlaylist) { DialogModalView(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); newPlaylistName = "" } }) }
@@ -72,7 +74,7 @@ struct ContentView: View {
             await controller.refreshPlaylists()
             await controller.refreshChannels() 
         }
-        .onChange(of: controller.videoURL) { _, _ in controller.scheduleQualityRefresh() }
+        .onChange(of: controller.videoURL) { _, _ in controller.scheduleMetadataRefresh() }
         .alert("Confirm Action", isPresented: Binding(get: { itemToDelete != nil || playlistToDelete != nil || channelToDelete != nil }, set: { if !$0 { itemToDelete = nil; playlistToDelete = nil; channelToDelete = nil } })) {
             Button("Delete", role: .destructive) {
                 if let i = itemToDelete { Task { await controller.deleteItem(id: i.id); itemToDelete = nil } }
@@ -106,8 +108,8 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Add New Video").font(.vazir(size: 14, weight: .bold)).foregroundStyle(slate900)
                         HStack(spacing: 0) {
-                            TextField("Paste YouTube video link here...", text: Bindable(controller).videoURL).textFieldStyle(.plain).font(.vazir(size: 14)).foregroundStyle(slate900).padding(.horizontal, 20).padding(.vertical, 14).onSubmit { controller.scheduleQualityRefresh() }
-                            Button { if let s = NSPasteboard.general.string(forType: .string) { controller.videoURL = s.trimmingCharacters(in: .whitespacesAndNewlines); controller.scheduleQualityRefresh() } } label: { Text("Paste").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 28).padding(.vertical, 14).background(accentRed).contentShape(Rectangle()) }.buttonStyle(.plain)
+                            TextField("Paste YouTube video link here...", text: Bindable(controller).videoURL).textFieldStyle(.plain).font(.vazir(size: 14)).foregroundStyle(slate900).padding(.horizontal, 20).padding(.vertical, 14).onSubmit { controller.scheduleMetadataRefresh() }
+                            Button { controller.pasteFromClipboard() } label: { Text("Paste").font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).padding(.horizontal, 28).padding(.vertical, 14).background(accentRed).contentShape(Rectangle()) }.buttonStyle(.plain)
                         }.background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay { RoundedRectangle(cornerRadius: 12).stroke(Color.black.opacity(0.1), lineWidth: 1) }
                     }
                     previewArea(); downloadControls()
@@ -127,6 +129,7 @@ struct ContentView: View {
                                 .contextMenu {
                                     Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
                                     Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
+                                    Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                                     if item.isDownloaded ?? true {
                                         Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
                                     }
@@ -154,6 +157,7 @@ struct ContentView: View {
                             .contextMenu {
                                 Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
                                 Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
+                                Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                                 if item.isDownloaded ?? true {
                                     Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
                                 }
@@ -277,6 +281,7 @@ struct ContentView: View {
             .contextMenu {
                 Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
                 Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
+                Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                 if item.isDownloaded ?? true {
                     Button { Task { await controller.offloadItem(id: item.id) } } label: { Label("Offload (Keep Info)", systemImage: "arrow.down.to.line.circle").font(.vazir(size: 13)) }
                 }
@@ -359,27 +364,26 @@ struct ContentView: View {
         HStack(spacing: 24) {
             ZStack(alignment: .bottomTrailing) {
                 Group {
-                    if controller.isResolvingQualities { RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.08)).frame(width: 200, height: 112).shimmering() }
+                    if controller.isResolvingMetadata { RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.08)).frame(width: 200, height: 112).shimmering() }
                     else if controller.resolvedThumbnailUrl.isEmpty { RoundedRectangle(cornerRadius: 12).fill(LinearGradient(colors: [Color(white: 0.18), Color(white: 0.1)], startPoint: .top, endPoint: .bottom)).frame(width: 200, height: 112).overlay { Image(systemName: "play.fill").foregroundStyle(Color.white.opacity(0.15)).font(.system(size: 28)) } }
                     else { AsyncImage(url: URL(string: controller.resolvedThumbnailUrl)) { phase in if let image = phase.image { image.resizable().aspectRatio(contentMode: .fill).frame(width: 200, height: 112).clipped() } else { Color.gray.opacity(0.08).overlay { ProgressView().scaleEffect(0.8) } } }.frame(width: 200, height: 112) }
                 }
                 if controller.resolvedDurationSeconds > 0 { Text(String(format: "%d:%02d", controller.resolvedDurationSeconds/60, controller.resolvedDurationSeconds%60)).font(.vazir(size: 11, weight: .bold)).padding(.horizontal, 8).padding(.vertical, 4).background(Color.black.opacity(0.75)).foregroundStyle(Color.white).clipShape(RoundedRectangle(cornerRadius: 6)).padding(8) }
             }.clipShape(RoundedRectangle(cornerRadius: 12)).shadow(color: Color.black.opacity(0.06), radius: 10, y: 4)
-            VStack(alignment: .leading, spacing: 6) { if controller.isResolvingQualities && controller.resolvedTitle.isEmpty { VStack(alignment: .leading, spacing: 8) { RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.1)).frame(maxWidth: .infinity).frame(height: 20).shimmering(); RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.08)).frame(width: 160).frame(height: 14).shimmering() } } else { Text(controller.resolvedTitle.isEmpty ? "Ready" : controller.resolvedTitle).font(.vazir(size: 18, weight: .bold)).foregroundStyle(slate900).lineLimit(2) } }.frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) { if controller.isResolvingMetadata && controller.resolvedTitle.isEmpty { VStack(alignment: .leading, spacing: 8) { RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.1)).frame(maxWidth: .infinity).frame(height: 20).shimmering(); RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.08)).frame(width: 160).frame(height: 14).shimmering() } } else { Text(controller.resolvedTitle.isEmpty ? "Ready" : controller.resolvedTitle).font(.vazir(size: 18, weight: .bold)).foregroundStyle(slate900).lineLimit(2) } }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func downloadControls() -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Quality").font(.vazir(size: 13, weight: .bold)).foregroundStyle(slate600)
-                if controller.isResolvingQualities { HStack(spacing: 8) { ForEach(0..<4, id: \.self) { i in RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)).frame(width: CGFloat(50 + i * 10), height: 44).shimmering() } } }
-                else { ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 8) { ForEach(controller.formats) { f in let isS = controller.selectedFormatID == f.id; Button { controller.selectedFormatID = f.id } label: { VStack(spacing: 2) { Text(f.title).font(.vazir(size: 13, weight: isS ? .black : .bold)).foregroundStyle(isS ? Color.white : slate900); if !f.filesize.isEmpty { Text(f.filesize).font(.vazir(size: 10, weight: .medium)).foregroundStyle(isS ? Color.white.opacity(0.8) : slate600) } }.padding(.horizontal, 14).padding(.vertical, 8).background(RoundedRectangle(cornerRadius: 8).fill(isS ? accentBlue : Color.white).overlay(RoundedRectangle(cornerRadius: 8).stroke(isS ? accentBlue : slate900.opacity(0.12), lineWidth: 1))) }.buttonStyle(.plain) } } } }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Ready to import").font(.vazir(size: 13, weight: .bold)).foregroundStyle(slate600)
+                Text("Paste only loads metadata. Quality selection happens after you press Download.").font(.vazir(size: 12, weight: .medium)).foregroundStyle(slate600.opacity(0.85))
             }
             if controller.isDownloading { HStack(spacing: 12) { VStack(alignment: .leading, spacing: 6) { HStack { Text(controller.downloadProgressText).font(.vazir(size: 10, weight: .bold)).foregroundStyle(slate600).lineLimit(1); Spacer(); Text("\(Int(controller.downloadProgress * 100))%").font(.vazir(size: 11, weight: .black)).foregroundStyle(accentBlue) }; GeometryReader { gp in ZStack(alignment: .leading) { Capsule().fill(slate900.opacity(0.05)).frame(height: 6); Capsule().fill(accentBlue).frame(width: gp.size.width * controller.downloadProgress, height: 6) } }.frame(height: 6) }; Button { controller.cancelDownload() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(Color.red.opacity(0.8)) }.buttonStyle(.plain) }.padding(.horizontal, 16).padding(.vertical, 8).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1)) }
             else {
                 HStack(spacing: 12) {
-                    Button { Task { await controller.downloadVideo() } } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingQualities || controller.formats.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                    Button { showDirectDownloadModal = true } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingMetadata || controller.resolvedTitle.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
                     Button { Task { await controller.addOffloadedVideo() } } label: {
                         HStack(spacing: 8) {
                             if controller.isAddingOffloaded {
@@ -398,7 +402,7 @@ struct ContentView: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.12), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
-                    .disabled(controller.isResolvingQualities || controller.resolvedTitle.isEmpty || controller.isAddingOffloaded)
+                    .disabled(controller.isResolvingMetadata || controller.resolvedTitle.isEmpty || controller.isAddingOffloaded)
                 }
             }
         }
@@ -409,7 +413,7 @@ struct ContentView: View {
             Color.black.opacity(0.4).background(.ultraThinMaterial).ignoresSafeArea().onTapGesture { closePlayer() }
             VStack {
                 if let p = player {
-                    VideoPlayer(player: p)
+                    DesktopVideoPlayer(player: p)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(alignment: .topTrailing) {
                             Button { closePlayer() } label: {
@@ -435,6 +439,25 @@ struct ContentView: View {
             playingItem = item
         } else {
             offloadedItemToDownload = item
+        }
+    }
+}
+
+struct DesktopVideoPlayer: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.showsFullScreenToggleButton = true
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
         }
     }
 }
@@ -603,11 +626,9 @@ struct OffloadedDownloadModal: View {
                 .disabled(controller.isDownloading)
 
                 Button {
+                    dismiss()
                     Task {
-                        let didStart = await controller.downloadVideo(existingMediaID: item.id)
-                        if didStart {
-                            dismiss()
-                        }
+                        _ = await controller.downloadVideo(existingMediaID: item.id)
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -636,6 +657,7 @@ struct OffloadedDownloadModal: View {
             if !didPrepare, let sourceURL = item.sourceUrl, !sourceURL.isEmpty {
                 didPrepare = true
                 controller.prepareOffloadedDownload(url: sourceURL)
+                controller.prepareDownloadSelection()
             }
         }
     }
@@ -643,6 +665,152 @@ struct OffloadedDownloadModal: View {
     private func formatDuration(_ seconds: Int?) -> String {
         let total = seconds ?? 0
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+struct DirectDownloadModal: View {
+    @Environment(\.dismiss) var dismiss
+    var controller: ServerController
+    @State private var didPrepare = false
+
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+    private let accentBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Download Video").font(.vazir(size: 18, weight: .black)).foregroundStyle(slate900)
+                    Text("Choose a quality and start the download").font(.vazir(size: 11, weight: .medium)).foregroundStyle(slate600)
+                }
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(slate600.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.isDownloading)
+            }
+
+            HStack(spacing: 16) {
+                ZStack(alignment: .bottomTrailing) {
+                    if controller.resolvedThumbnailUrl.isEmpty {
+                        RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.08)).frame(width: 220, height: 124)
+                    } else {
+                        AsyncImage(url: URL(string: controller.resolvedThumbnailUrl)) { phase in
+                            if let image = phase.image {
+                                image.resizable().aspectRatio(contentMode: .fill).frame(width: 220, height: 124).clipped()
+                            } else {
+                                Color.gray.opacity(0.08).overlay { ProgressView().scaleEffect(0.8) }
+                            }
+                        }
+                        .frame(width: 220, height: 124)
+                    }
+
+                    if controller.resolvedDurationSeconds > 0 {
+                        Text(String(format: "%d:%02d", controller.resolvedDurationSeconds / 60, controller.resolvedDurationSeconds % 60))
+                            .font(.vazir(size: 11, weight: .bold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.black.opacity(0.75))
+                            .foregroundStyle(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .padding(8)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(controller.resolvedTitle.isEmpty ? "Untitled" : controller.resolvedTitle)
+                        .font(.vazir(size: 16, weight: .bold))
+                        .foregroundStyle(slate900)
+                        .lineLimit(3)
+                    if controller.isResolvingQualities {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading available qualities...").font(.vazir(size: 12, weight: .medium)).foregroundStyle(slate600)
+                        }
+                    } else if controller.formats.isEmpty {
+                        Text("No quality options found yet").font(.vazir(size: 12, weight: .medium)).foregroundStyle(slate600)
+                    } else {
+                        Text("Available qualities").font(.vazir(size: 12, weight: .bold)).foregroundStyle(slate600)
+                    }
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Quality").font(.vazir(size: 13, weight: .bold)).foregroundStyle(slate600)
+                if controller.isResolvingQualities {
+                    HStack(spacing: 8) {
+                        ForEach(0..<4, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 8).fill(Color.gray.opacity(0.1)).frame(width: CGFloat(50 + i * 10), height: 42).shimmering()
+                        }
+                    }
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(controller.formats) { format in
+                                let isSelected = controller.selectedFormatID == format.id
+                                Button { controller.selectedFormatID = format.id } label: {
+                                    VStack(spacing: 2) {
+                                        Text(format.title).font(.vazir(size: 13, weight: isSelected ? .black : .bold)).foregroundStyle(isSelected ? Color.white : slate900)
+                                        if !format.filesize.isEmpty {
+                                            Text(format.filesize).font(.vazir(size: 10, weight: .medium)).foregroundStyle(isSelected ? Color.white.opacity(0.8) : slate600)
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(isSelected ? accentBlue : Color.white).overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? accentBlue : slate900.opacity(0.12), lineWidth: 1)))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button { dismiss() } label: {
+                    Text("Cancel").font(.vazir(size: 13, weight: .bold)).frame(maxWidth: .infinity).frame(height: 44).background(Color.gray.opacity(0.1)).foregroundStyle(slate900).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.isDownloading)
+
+                Button {
+                    dismiss()
+                    Task {
+                        _ = await controller.downloadVideo()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if controller.isDownloading {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.down")
+                        }
+                        Text(controller.isDownloading ? "Downloading..." : "Start Download")
+                    }
+                    .font(.vazir(size: 13, weight: .bold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(controller.isResolvingQualities || controller.formats.isEmpty ? Color.gray.opacity(0.1) : accentBlue)
+                    .foregroundStyle(controller.isResolvingQualities || controller.formats.isEmpty ? slate600.opacity(0.5) : Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.isResolvingQualities || controller.formats.isEmpty || controller.isDownloading)
+            }
+        }
+        .padding(28)
+        .frame(width: 640)
+        .background(Color(red: 0.98, green: 0.98, blue: 1.0))
+        .task {
+            if !didPrepare {
+                didPrepare = true
+                controller.prepareDownloadSelection()
+            }
+        }
     }
 }
 
