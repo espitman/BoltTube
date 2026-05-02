@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import WebKit
 
 enum AppTab {
     case home; case library; case playlists; case profile; case settings
@@ -56,7 +57,7 @@ struct ContentView: View {
         }
         .overlay { if let _ = playingItem { playerOverlay() } }
         .sheet(item: $offloadedItemToDownload) { item in OffloadedDownloadModal(controller: controller, item: item) }
-        .sheet(isPresented: $showDirectDownloadModal) { DirectDownloadModal(controller: controller) }
+        .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal() }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
         .sheet(isPresented: $showCreatePlaylist) { DialogModalView(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); newPlaylistName = "" } }) }
@@ -128,6 +129,9 @@ struct ContentView: View {
                             RecentCardCompact(controller: controller, item: item, onPlay: { openLibraryItem(item) }, onDelete: { itemToDelete = item })
                                 .contextMenu {
                                     Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
+                                    if let source = item.sourceUrl, !source.isEmpty {
+                                        Button { controller.openSourceInChrome(source) } label: { Label("Open on YouTube (Chrome)", systemImage: "safari").font(.vazir(size: 13)) }
+                                    }
                                     Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
                                     Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                                     if item.isDownloaded ?? true {
@@ -156,6 +160,9 @@ struct ContentView: View {
                                  onDelete: { itemToDelete = item })
                             .contextMenu {
                                 Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
+                                if let source = item.sourceUrl, !source.isEmpty {
+                                    Button { controller.openSourceInChrome(source) } label: { Label("Open on YouTube (Chrome)", systemImage: "safari").font(.vazir(size: 13)) }
+                                }
                                 Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
                                 Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                                 if item.isDownloaded ?? true {
@@ -280,6 +287,9 @@ struct ContentView: View {
                  })
             .contextMenu {
                 Button { Task { await controller.refreshMetadata(id: item.id) } } label: { Label("Refresh Metadata", systemImage: "arrow.clockwise").font(.vazir(size: 13)) }
+                if let source = item.sourceUrl, !source.isEmpty {
+                    Button { controller.openSourceInChrome(source) } label: { Label("Open on YouTube (Chrome)", systemImage: "safari").font(.vazir(size: 13)) }
+                }
                 Button { itemToAddToPlaylist = item } label: { Label("Add to Playlist", systemImage: "plus.circle").font(.vazir(size: 13)) }
                 Button { Task { await controller.importDownloadedFile(for: item) } } label: { Label("Import Downloaded File", systemImage: "square.and.arrow.down").font(.vazir(size: 13)) }
                 if item.isDownloaded ?? true {
@@ -460,6 +470,111 @@ struct DesktopVideoPlayer: NSViewRepresentable {
             nsView.player = player
         }
     }
+}
+
+struct FreightpassDownloadModal: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
+    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
+    private let accentBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Freightpass Download").font(.vazir(size: 15, weight: .black)).foregroundStyle(slate900)
+                    Text("freightpass.ca").font(.vazir(size: 10, weight: .bold)).foregroundStyle(slate600)
+                }
+                Spacer()
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(slate600.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: 54)
+            .background(Color.white)
+
+            Divider().opacity(0.08)
+
+            FreightpassWebView(url: URL(string: "https://freightpass.ca/")!)
+                .frame(width: 601, height: 560)
+                .background(Color.white)
+        }
+        .frame(width: 601)
+        .background(Color.white)
+    }
+}
+
+struct FreightpassWebView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> WKWebView {
+        let contentController = WKUserContentController()
+        contentController.addUserScript(WKUserScript(source: Self.customCSSScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+
+        let configuration = WKWebViewConfiguration()
+        configuration.userContentController = contentController
+
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.allowsBackForwardNavigationGestures = true
+        webView.setValue(false, forKey: "drawsBackground")
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            webView.evaluateJavaScript(FreightpassWebView.customCSSScript)
+        }
+    }
+
+    private static let customCSSScript = """
+    (() => {
+      const styleID = 'bolttube-freightpass-custom-style';
+      document.getElementById(styleID)?.remove();
+      const style = document.createElement('style');
+      style.id = styleID;
+      style.textContent = `
+        html, body {
+          background: #f8f9fc !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        }
+        body {
+          margin: 0 !important;
+        }
+        header, nav {
+          border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+          box-shadow: none !important;
+        }
+        input, textarea, select {
+          border-radius: 10px !important;
+          border-color: rgba(15, 23, 42, 0.14) !important;
+          box-shadow: none !important;
+        }
+        button, a[role="button"], input[type="submit"] {
+          border-radius: 10px !important;
+        }
+        .container, main, section {
+          max-width: 601px !important;
+        }
+        #footer, #header, #logo {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+    })();
+    """
 }
 
 struct DialogModalView: View {

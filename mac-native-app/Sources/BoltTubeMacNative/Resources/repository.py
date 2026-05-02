@@ -16,6 +16,7 @@ class MediaItem:
     duration: int = 0
     title: str = ""
     is_downloaded: int = 1
+    import_source_path: str = ""
 
 class MediaRepository:
     def __init__(self, db_path: Path):
@@ -36,7 +37,8 @@ class MediaRepository:
                     thumbnail_url TEXT,
                     duration INTEGER DEFAULT 0,
                     title TEXT,
-                    is_downloaded INTEGER DEFAULT 1
+                    is_downloaded INTEGER DEFAULT 1,
+                    import_source_path TEXT
                 )
             """)
             conn.execute("""
@@ -71,6 +73,8 @@ class MediaRepository:
             except sqlite3.OperationalError: pass
             try: conn.execute("ALTER TABLE media_items ADD COLUMN is_downloaded INTEGER DEFAULT 1")
             except sqlite3.OperationalError: pass
+            try: conn.execute("ALTER TABLE media_items ADD COLUMN import_source_path TEXT")
+            except sqlite3.OperationalError: pass
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS playlist_items (
@@ -90,8 +94,8 @@ class MediaRepository:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 INSERT INTO media_items 
-                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded, import_source_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     file_name = excluded.file_name,
                     file_path = excluded.file_path,
@@ -102,8 +106,9 @@ class MediaRepository:
                     thumbnail_url = excluded.thumbnail_url,
                     duration = excluded.duration,
                     title = excluded.title,
-                    is_downloaded = excluded.is_downloaded
-            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title, getattr(item, 'is_downloaded', 1)))
+                    is_downloaded = excluded.is_downloaded,
+                    import_source_path = excluded.import_source_path
+            """, (item.id, item.file_name, item.file_path, item.stream_url, item.size, item.created_at, item.source_url, item.thumbnail_url, item.duration, item.title, getattr(item, 'is_downloaded', 1), getattr(item, 'import_source_path', "")))
 
     def delete_item(self, media_id: str):
         with sqlite3.connect(self.db_path) as conn:
@@ -112,13 +117,13 @@ class MediaRepository:
     def get_item(self, media_id: str) -> Optional[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded FROM media_items WHERE id = ?", (media_id,)).fetchone()
+            row = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded, import_source_path FROM media_items WHERE id = ?", (media_id,)).fetchone()
             return dict(row) if row else None
 
     def get_all_items(self) -> List[Dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded FROM media_items ORDER BY created_at DESC").fetchall()
+            rows = conn.execute("SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded, import_source_path FROM media_items ORDER BY created_at DESC").fetchall()
             return [dict(r) for r in rows]
 
     def get_items_by_source_url(self, source_url: str) -> List[Dict[str, Any]]:
@@ -126,7 +131,7 @@ class MediaRepository:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
-                SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded
+                SELECT id, file_name, file_path, stream_url, size, created_at, source_url, thumbnail_url, duration, title, is_downloaded, import_source_path
                 FROM media_items
                 WHERE source_url = ?
                 ORDER BY is_downloaded DESC, created_at DESC

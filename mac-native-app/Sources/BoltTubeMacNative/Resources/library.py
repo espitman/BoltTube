@@ -59,7 +59,8 @@ class MediaLibrary:
                     "thumbnail_url": r.get("thumbnail_url"),
                     "source_url": str(r.get("source_url") or ""),
                     "duration": duration,
-                    "is_downloaded": bool(r.get("is_downloaded", 1))
+                    "is_downloaded": bool(r.get("is_downloaded", 1)),
+                    "import_source_path": str(r.get("import_source_path") or "")
                 })
             return result
 
@@ -124,10 +125,53 @@ class MediaLibrary:
         with self._lock:
             item = self.repo.get_item(media_id)
             if item:
-                Path(item["file_path"]).unlink(missing_ok=True)
+                file_path = Path(item.get("file_path") or "")
+                file_path.unlink(missing_ok=True)
+                import_path = Path(item.get("import_source_path") or "")
+                if (not import_path or not import_path.exists()) and item.get("source_url"):
+                    guessed = self._guess_import_path_from_source_url(item)
+                    if guessed:
+                        import_path = guessed
+                if import_path and import_path.exists() and import_path != file_path:
+                    import_path.unlink(missing_ok=True)
                 self.repo.set_download_status(media_id, 0)
                 return True
         return False
+
+    def _guess_import_path_from_source_url(self, item: Dict[str, Any]) -> Optional[Path]:
+        source_url = str(item.get("source_url") or "")
+        video_id = self._extract_youtube_id(source_url)
+        if not video_id:
+            return None
+        downloads = Path.home() / "Downloads"
+        if not downloads.exists():
+            return None
+        candidates = []
+        for p in downloads.glob("*"):
+            if not p.is_file():
+                continue
+            name = p.name.lower()
+            if video_id.lower() in name and p.suffix.lower() in [".mp4", ".mkv", ".mov", ".webm", ".m4v"]:
+                candidates.append(p)
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    def _extract_youtube_id(self, url: str) -> str:
+        if not url:
+            return ""
+        try:
+            parsed = urlparse.urlparse(url)
+            host = (parsed.netloc or "").lower()
+            if "youtu.be" in host:
+                return parsed.path.lstrip("/").split("/")[0]
+            if "youtube.com" in host:
+                query = urlparse.parse_qs(parsed.query)
+                if "v" in query and query["v"]:
+                    return query["v"][0]
+            return ""
+        except Exception:
+            return ""
 
     def _preferred_existing_item(self, source_url: str, preferred_media_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         if preferred_media_id:
@@ -150,7 +194,7 @@ class MediaLibrary:
                 duplicate_path.unlink(missing_ok=True)
         self.repo.merge_items(keep_id, [item["id"] for item in duplicates])
 
-    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1, existing_media_id: Optional[str] = None) -> MediaItem:
+    def add(self, *, source_url: str, file_path: Path, thumbnail_url: str = "", duration: int = 0, title: str = "", is_downloaded: int = 1, existing_media_id: Optional[str] = None, import_source_path: Optional[Path] = None) -> MediaItem:
         with self._lock:
             existing_item = self._preferred_existing_item(source_url, existing_media_id)
             media_id = str(existing_item["id"]) if existing_item else f"{file_path.stem}-{uuid.uuid4().hex[:8]}"
@@ -163,7 +207,8 @@ class MediaLibrary:
             
             item = MediaItem(id=media_id, file_name=final_p.name, file_path=str(final_p), stream_url=f"/media/{media_id}",
                             size=readable_size_internal(final_p.stat().st_size), created_at=(existing_item or {}).get("created_at") or datetime.now(timezone.utc).isoformat(),
-                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title, is_downloaded=is_downloaded)
+                            source_url=source_url, thumbnail_url=thumbnail_url, duration=duration, title=final_title, is_downloaded=is_downloaded,
+                            import_source_path=str(import_source_path or (existing_item or {}).get("import_source_path") or ""))
             self.repo.save_item(item)
             self._collapse_duplicates(source_url, media_id, final_p)
             return item
@@ -237,6 +282,7 @@ class MediaLibrary:
                 title=title or source.stem,
                 is_downloaded=1,
                 existing_media_id=existing_media_id,
+                import_source_path=source,
             )
             return item
 

@@ -19,7 +19,18 @@ private func bundledResourceURL(named name: String, withExtension ext: String) -
 private let youtubeDataAPIKey = "AIzaSyBzDuWdCTGaMn20glWGBjsZYq0WT18KFa4"
 
 struct MediaLibraryItem: Codable, Identifiable, Hashable {
-    let id: String; let fileName: String?; let filePath: String?; let streamUrl: String?; let size: String?; let createdAt: String?; let thumbnailUrl: String?; let duration: Int?; let sourceUrl: String?; let title: String?; let isDownloaded: Bool?
+    let id: String
+    let fileName: String?
+    let filePath: String?
+    let streamUrl: String?
+    let size: String?
+    let createdAt: String?
+    let thumbnailUrl: String?
+    let duration: Int?
+    let sourceUrl: String?
+    let title: String?
+    let isDownloaded: Bool?
+    let importSourcePath: String?
 }
 
 struct Playlist: Codable, Identifiable, Hashable {
@@ -143,6 +154,14 @@ final class ServerController {
         if panel.runModal() == .OK, let url = panel.url { downloadDirectory = url; ensureDirectoryExists(url); appendLog("Library folder set to \(url.path)"); Task { await refreshLibrary() } }
     }
     func openDownloadDirectory() { ensureDirectoryExists(downloadDirectory); NSWorkspace.shared.open(downloadDirectory) }
+
+    func openSourceInChrome(_ urlString: String) {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), !trimmed.isEmpty else { return }
+        if !NSWorkspace.shared.open([url], withAppBundleIdentifier: "com.google.Chrome", options: [], additionalEventParamDescriptor: nil, launchIdentifiers: nil) {
+            NSWorkspace.shared.open(url)
+        }
+    }
     func pasteFromClipboard() {
         let pb = NSPasteboard.general; let value = pb.string(forType: .string) ?? pb.string(forType: .URL) ?? pb.string(forType: NSPasteboard.PasteboardType("public.url"))
         if let value = value { let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines); appendLog("Pasted: \(trimmed.prefix(60))..."); videoURL = trimmed; scheduleMetadataRefresh() }
@@ -315,7 +334,16 @@ final class ServerController {
     
     func offloadItem(id: String) async {
         let request = buildPOSTRequest(endpoint: "/api/offload", body: ["id": id])
-        do { let (_, response) = try await URLSession.shared.data(for: request); guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }; await refreshLibrary() } catch { appendLog("Offload failed.") }
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let r = response as? HTTPURLResponse, (200..<300).contains(r.statusCode) else { return }
+            if let item = libraryItems.first(where: { $0.id == id }),
+               let importPath = item.importSourcePath,
+               !importPath.isEmpty {
+                try? FileManager.default.removeItem(atPath: importPath)
+            }
+            await refreshLibrary()
+        } catch { appendLog("Offload failed.") }
     }
 
     func refreshMetadata(id: String) async {

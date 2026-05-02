@@ -20,7 +20,8 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("AVKit"),
-                .linkedFramework("AVFoundation")
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("WebKit")
             ]
         )
     ]
