@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import AVKit
 import WebKit
 
@@ -57,7 +58,7 @@ struct ContentView: View {
         }
         .overlay { if let _ = playingItem { playerOverlay() } }
         .sheet(item: $offloadedItemToDownload) { item in OffloadedDownloadModal(controller: controller, item: item) }
-        .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal() }
+        .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal(videoURL: controller.videoURL) }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
         .sheet(isPresented: $showCreatePlaylist) { DialogModalView(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); newPlaylistName = "" } }) }
@@ -474,84 +475,237 @@ struct DesktopVideoPlayer: NSViewRepresentable {
 
 struct FreightpassDownloadModal: View {
     @Environment(\.dismiss) private var dismiss
-
-    private let slate900 = Color(red: 0.07, green: 0.09, blue: 0.15)
-    private let slate600 = Color(red: 0.3, green: 0.35, blue: 0.45)
-    private let accentBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
+    let videoURL: String
+    private let modalBackground = Color(red: 0.067, green: 0.094, blue: 0.153)
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Freightpass Download").font(.vazir(size: 15, weight: .black)).foregroundStyle(slate900)
-                    Text("freightpass.ca").font(.vazir(size: 10, weight: .bold)).foregroundStyle(slate600)
-                }
-                Spacer()
+        FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL)
+            .frame(width: 601, height: 614)
+            .background(modalBackground)
+            .overlay(alignment: .topTrailing) {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(slate600.opacity(0.7))
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.62))
+                        .padding(10)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 18)
-            .frame(height: 54)
-            .background(Color.white)
-
-            Divider().opacity(0.08)
-
-            FreightpassWebView(url: URL(string: "https://freightpass.ca/")!)
-                .frame(width: 601, height: 560)
-                .background(Color.white)
-        }
         .frame(width: 601)
-        .background(Color.white)
+        .background(modalBackground)
     }
 }
 
 struct FreightpassWebView: NSViewRepresentable {
     let url: URL
+    let videoURL: String
 
     func makeNSView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
-        contentController.addUserScript(WKUserScript(source: Self.customCSSScript, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        contentController.addUserScript(WKUserScript(source: Self.widgetScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        context.coordinator.videoURL = videoURL
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
         webView.setValue(false, forKey: "drawsBackground")
-        webView.load(URLRequest(url: url))
+        webView.loadHTMLString(Self.widgetHTML(for: videoURL), baseURL: url)
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {}
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        guard context.coordinator.videoURL != videoURL else { return }
+        context.coordinator.videoURL = videoURL
+        webView.loadHTMLString(Self.widgetHTML(for: videoURL), baseURL: url)
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+        var videoURL = ""
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.evaluateJavaScript(FreightpassWebView.customCSSScript)
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if navigationAction.targetFrame == nil, let requestURL = navigationAction.request.url {
+                if Self.isAllowedModalURL(requestURL) {
+                    webView.load(URLRequest(url: requestURL))
+                } else {
+                    NSWorkspace.shared.open(requestURL)
+                }
+            }
+            return nil
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+            if navigationAction.shouldPerformDownload {
+                decisionHandler(.download)
+            } else if navigationAction.targetFrame?.isMainFrame == true, let requestURL = navigationAction.request.url, !Self.isAllowedModalURL(requestURL) {
+                NSWorkspace.shared.open(requestURL)
+                decisionHandler(.cancel)
+            } else {
+                decisionHandler(.allow)
+            }
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
+            if navigationResponse.canShowMIMEType {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.download)
+            }
+        }
+
+        func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+            download.delegate = self
+        }
+
+        func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
+            let fallbackName = response.suggestedFilename ?? "BoltTube-download"
+            let filename = suggestedFilename.isEmpty ? fallbackName : suggestedFilename
+            let savePanel = NSSavePanel()
+            savePanel.nameFieldStringValue = filename
+            savePanel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            savePanel.canCreateDirectories = true
+            savePanel.isExtensionHidden = false
+
+            if savePanel.runModal() == .OK {
+                completionHandler(savePanel.url)
+            } else {
+                completionHandler(nil)
+            }
+        }
+
+        func downloadDidFinish(_ download: WKDownload) {
+            print("DEBUG: ClickAPI widget download finished.")
+        }
+
+        func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            print("DEBUG: ClickAPI widget download failed: \(error.localizedDescription)")
+        }
+
+        private static func isAllowedModalURL(_ url: URL) -> Bool {
+            guard let host = url.host?.lowercased() else { return true }
+            return host == "clickapi.net" || host.hasSuffix(".clickapi.net") || host == "api.cdnframe.com" || host.hasSuffix(".api.cdnframe.com")
         }
     }
 
-    private static let customCSSScript = """
+    private static func widgetHTML(for videoURL: String) -> String {
+        let sourceURL = widgetURL(for: videoURL).absoluteString
+        return """
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            html, body {
+              width: 100%;
+              height: 100%;
+              margin: 0;
+              padding: 0;
+              overflow-x: hidden;
+              overflow-y: auto;
+              background: #111827;
+            }
+            #widgetPlusApi {
+              display: block;
+              width: 100%;
+              min-height: 100%;
+              border: none;
+              background: #111827;
+            }
+          </style>
+        </head>
+        <body>
+          <iframe id="widgetPlusApi" src="\(sourceURL)" width="100%" height="100%" allowtransparency="true" scrolling="yes" style="border:none"></iframe>
+        </body>
+        </html>
+        """
+    }
+
+    private static func widgetURL(for videoURL: String) -> URL {
+        var components = URLComponents(string: "https://clickapi.net/api/widgetplus")!
+        components.queryItems = [URLQueryItem(name: "url", value: videoURL)]
+        return components.url ?? URL(string: "https://clickapi.net/api/widgetplus")!
+    }
+
+    private static let widgetScript = """
     (() => {
+      document.addEventListener('contextmenu', (event) => event.preventDefault(), true);
+      document.addEventListener('selectstart', (event) => event.preventDefault(), true);
+      document.addEventListener('dragstart', (event) => event.preventDefault(), true);
+      document.addEventListener('click', (event) => {
+        const target = event.target?.closest?.('a, button, input[type="button"], input[type="submit"], [role="button"]');
+        if (!target) return;
+        const text = ((target.innerText || target.value || target.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+        if (text.includes('download')) {
+          event.preventDefault();
+          sessionStorage.setItem('bolttubeUserDownloadClick', '1');
+          document.body.classList.remove('bolttube-waiting');
+          document.documentElement.classList.remove('bolttube-page-loading');
+        }
+      }, true);
+      document.addEventListener('submit', (event) => {
+        const submitter = event.submitter;
+        const text = ((submitter?.innerText || submitter?.value || submitter?.getAttribute?.('aria-label') || '') + '').trim().toLowerCase();
+        if (text.includes('download')) {
+          event.preventDefault();
+        }
+        sessionStorage.setItem('bolttubeUserDownloadClick', '1');
+        document.body.classList.remove('bolttube-waiting');
+        document.documentElement.classList.remove('bolttube-page-loading');
+      }, true);
+    })();
+    """
+
+    private static func customScript(for videoURL: String) -> String {
+        let encodedURL = (try? String(data: JSONEncoder().encode(videoURL), encoding: .utf8)) ?? "\"\""
+        return """
+    (() => {
+      const bolttubeVideoURL = \(encodedURL);
       const styleID = 'bolttube-freightpass-custom-style';
       document.getElementById(styleID)?.remove();
       const style = document.createElement('style');
       style.id = styleID;
       style.textContent = `
+        * {
+          -webkit-user-select: none !important;
+          user-select: none !important;
+          -webkit-touch-callout: none !important;
+        }
         html, body {
-          background: #f8f9fc !important;
+          background: #111827 !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
         }
         body {
           margin: 0 !important;
+          padding: 0 !important;
+          overflow-x: hidden !important;
+        }
+        #__nuxt,
+        #__nuxt > div,
+        .bg-gradient-to-r,
+        .h-screen {
+          background: #111827 !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
         }
         header, nav {
           border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
@@ -567,14 +721,238 @@ struct FreightpassWebView: NSViewRepresentable {
         }
         .container, main, section {
           max-width: 601px !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
         }
-        #footer, #header, #logo {
+        body.bolttube-home #text,
+        body.bolttube-home #footer,
+        body.bolttube-home center,
+        body.bolttube-home #header,
+        body.bolttube-home #logo {
+          display: none !important;
+        }
+        body.bolttube-waiting > *:not(#bolttube-freightpass-loader) {
+          visibility: hidden !important;
+        }
+        #bolttube-freightpass-loader {
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 2147483647 !important;
+          display: none !important;
+          align-items: center !important;
+          justify-content: center !important;
+          background: #111827 !important;
+          color: #f8fafc !important;
+          font: 700 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        }
+        body.bolttube-waiting #bolttube-freightpass-loader {
+          display: flex !important;
+        }
+        body.bolttube-convert,
+        body.bolttube-convert * {
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+        }
+        body.bolttube-convert,
+        body.bolttube-convert > *,
+        body.bolttube-convert .convert-iframe,
+        body.bolttube-convert .convert-iframe * {
+          background-color: #111827 !important;
+        }
+        body.bolttube-convert > * {
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+        body.bolttube-convert .convert-iframe {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          max-width: 100% !important;
+          overflow-x: hidden !important;
+        }
+        body.bolttube-convert .convert-iframe center {
           display: none !important;
         }
       `;
       document.head.appendChild(style);
+      document.addEventListener('contextmenu', (event) => event.preventDefault(), true);
+      document.addEventListener('selectstart', (event) => event.preventDefault(), true);
+      document.addEventListener('dragstart', (event) => event.preventDefault(), true);
+      document.addEventListener('click', (event) => {
+        const target = event.target?.closest?.('a, button, input[type="button"], input[type="submit"], [role="button"]');
+        if (!target) return;
+        const text = ((target.innerText || target.value || target.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+        if (text.includes('download')) {
+          event.preventDefault();
+          sessionStorage.setItem('bolttubeUserDownloadClick', '1');
+          document.body.classList.remove('bolttube-waiting');
+          document.documentElement.classList.remove('bolttube-page-loading');
+        }
+      }, true);
+      document.addEventListener('submit', (event) => {
+        const submitter = event.submitter;
+        const text = ((submitter?.innerText || submitter?.value || submitter?.getAttribute?.('aria-label') || '') + '').trim().toLowerCase();
+        if (text.includes('download')) {
+          event.preventDefault();
+        }
+        sessionStorage.setItem('bolttubeUserDownloadClick', '1');
+        document.body.classList.remove('bolttube-waiting');
+        document.documentElement.classList.remove('bolttube-page-loading');
+      }, true);
+
+      const preventDownloadRefresh = (root = document) => {
+        const controls = Array.from(root.querySelectorAll('button, input[type="button"], input[type="submit"], a[role="button"], [role="button"]'));
+        controls.forEach((element) => {
+          const text = ((element.innerText || element.value || element.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+          if (!text.includes('download')) return;
+          if (element.tagName === 'BUTTON' || element.tagName === 'INPUT') {
+            element.setAttribute('type', 'button');
+          }
+          element.addEventListener('click', () => {
+            sessionStorage.setItem('bolttubeUserDownloadClick', '1');
+          }, { capture: true });
+        });
+      };
+
+      document.getElementById('bolttube-freightpass-loader')?.remove();
+      const loader = document.createElement('div');
+      loader.id = 'bolttube-freightpass-loader';
+      loader.textContent = 'Preparing converter...';
+      document.body.appendChild(loader);
+
+      document.body.classList.remove('bolttube-home', 'bolttube-convert', 'bolttube-waiting');
+      const path = window.location.pathname.replace(/\\/+$/, '/');
+      const isConvert = path === '/convert/' || path.startsWith('/convert/');
+      const routeName = path.split('/').filter(Boolean)[0] || '';
+      const isClickAPIFrame = routeName === 'mp3' || routeName === 'mp4';
+
+      if (isClickAPIFrame) {
+        document.body.classList.add('bolttube-convert', 'bolttube-waiting');
+        var attempts = 0;
+        const showClickAPIFrame = () => {
+          attempts += 1;
+          preventDownloadRefresh(document);
+          document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+          document.documentElement.style.setProperty('background-color', '#111827', 'important');
+          document.body.style.setProperty('overflow-x', 'hidden', 'important');
+          document.body.style.setProperty('margin', '0', 'important');
+          document.body.style.setProperty('padding', '0', 'important');
+          document.body.style.setProperty('background-color', '#111827', 'important');
+          document.querySelectorAll('#__nuxt, #__nuxt > div, .bg-gradient-to-r, .h-screen').forEach((element) => {
+            element.style.setProperty('background', '#111827', 'important');
+            element.style.setProperty('max-width', '100%', 'important');
+            element.style.setProperty('overflow-x', 'hidden', 'important');
+          });
+          const visibleText = (document.body.innerText || '').toLowerCase();
+          const hasConverterContent = visibleText.includes('download') || visibleText.includes('preparing') || visibleText.includes('mp4') || visibleText.includes('error');
+          if (!hasConverterContent && attempts < 60) {
+            window.setTimeout(showClickAPIFrame, 150);
+            return;
+          }
+          document.body.classList.remove('bolttube-waiting');
+          document.documentElement.classList.remove('bolttube-page-loading');
+        };
+        showClickAPIFrame();
+      } else if (isConvert) {
+        document.body.classList.add('bolttube-convert');
+        var attempts = 0;
+        const showConvertFrame = () => {
+          attempts += 1;
+          const keep = document.querySelector('.convert-iframe');
+          if (!keep) {
+            if (attempts < 40) window.setTimeout(showConvertFrame, 150);
+            return;
+          }
+          document.querySelectorAll('body *').forEach((element) => {
+            const shouldKeep = element === keep || element.contains(keep) || keep.contains(element) || element.id === 'bolttube-freightpass-loader';
+            element.style.setProperty('display', shouldKeep ? '' : 'none', 'important');
+            element.style.setProperty('visibility', shouldKeep ? 'visible' : 'hidden', 'important');
+            if (shouldKeep) {
+              element.style.setProperty('background-color', '#111827', 'important');
+              element.style.setProperty('max-width', '100%', 'important');
+              element.style.setProperty('box-sizing', 'border-box', 'important');
+            }
+          });
+          keep.style.setProperty('display', 'block', 'important');
+          keep.style.setProperty('visibility', 'visible', 'important');
+          keep.style.setProperty('width', '100%', 'important');
+          keep.style.setProperty('max-width', '100%', 'important');
+          keep.style.setProperty('margin', '0', 'important');
+          keep.style.setProperty('padding', '0', 'important');
+          keep.style.setProperty('background-color', '#111827', 'important');
+          keep.style.setProperty('overflow-x', 'hidden', 'important');
+          keep.style.setProperty('min-height', '520px', 'important');
+          keep.querySelectorAll('center').forEach((element) => {
+            element.style.setProperty('display', 'none', 'important');
+          });
+          preventDownloadRefresh(keep);
+          const mp4Targets = Array.from(keep.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"], label'));
+          const mp4Button = mp4Targets.find((element) => {
+            const text = ((element.innerText || element.value || element.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+            return text === 'mp4' || text.includes('mp4');
+          });
+          const alreadySelectedFormat = sessionStorage.getItem('bolttubeMP4Clicked') === '1' || sessionStorage.getItem('bolttubeUserDownloadClick') === '1';
+          if (mp4Button && !mp4Button.dataset.bolttubeClicked && !alreadySelectedFormat) {
+            mp4Button.dataset.bolttubeClicked = 'true';
+            sessionStorage.setItem('bolttubeMP4Clicked', '1');
+            window.setTimeout(() => mp4Button.click(), 150);
+          }
+          document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+          document.documentElement.style.setProperty('background-color', '#111827', 'important');
+          document.body.style.setProperty('overflow-x', 'hidden', 'important');
+          document.body.style.setProperty('margin', '0', 'important');
+          document.body.style.setProperty('padding', '0', 'important');
+          document.body.style.setProperty('background-color', '#111827', 'important');
+          document.body.classList.remove('bolttube-waiting');
+          document.documentElement.classList.remove('bolttube-page-loading');
+        };
+        showConvertFrame();
+      } else {
+        document.body.classList.add('bolttube-home');
+        if (bolttubeVideoURL.trim().length > 0) {
+          document.body.classList.add('bolttube-waiting');
+          var attempts = 0;
+          const tryConvert = () => {
+            attempts += 1;
+            const inputs = Array.from(document.querySelectorAll('input, textarea'));
+            const input = inputs.find((element) => {
+              const placeholder = (element.getAttribute('placeholder') || '').toLowerCase();
+              return placeholder.includes('enter keywords') || placeholder.includes('youtube url');
+            }) || inputs.find((element) => ['text', 'search', 'url', ''].includes((element.getAttribute('type') || '').toLowerCase()));
+
+            if (!input) {
+              if (attempts < 20) window.setTimeout(tryConvert, 250);
+              return;
+            }
+
+            input.focus();
+            input.value = bolttubeVideoURL;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a'));
+            const convertButton = buttons.find((element) => {
+              const text = ((element.innerText || element.value || element.getAttribute('aria-label') || '') + '').trim().toLowerCase();
+              return text.includes('convert');
+            }) || document.querySelector('button[type="submit"], input[type="submit"]');
+
+            if (convertButton) {
+              window.setTimeout(() => convertButton.click(), 250);
+            } else if (attempts < 20) {
+              window.setTimeout(tryConvert, 250);
+            }
+          };
+          window.setTimeout(tryConvert, 350);
+        } else {
+          document.body.classList.remove('bolttube-waiting');
+          document.documentElement.classList.remove('bolttube-page-loading');
+        }
+      }
     })();
     """
+    }
 }
 
 struct DialogModalView: View {
