@@ -247,6 +247,54 @@ final class ServerController {
             appendLog("Import failed: \(error.localizedDescription)")
         }
     }
+
+    func importDownloadedFile(at fileURL: URL, sourceURL: String, mediaID: String = "") async {
+        guard !isBusy else { return }
+        guard await ensurePythonReady() else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            appendLog("Downloaded file not found: \(fileURL.lastPathComponent)")
+            return
+        }
+
+        let trimmedSourceURL = sourceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        isBusy = true
+        isImportingFile = true
+        defer { isBusy = false; isImportingFile = false }
+
+        do {
+            var arguments = [
+                bridgeScriptURL.path,
+                "import-file",
+                "--download-dir", downloadDirectory.path,
+                "--file-path", fileURL.path,
+                "--duration", "\(resolvedDurationSeconds)"
+            ]
+            if trimmedSourceURL.hasPrefix("http://") || trimmedSourceURL.hasPrefix("https://") {
+                arguments.append(contentsOf: ["--source-url", trimmedSourceURL])
+            }
+            if !resolvedTitle.isEmpty {
+                arguments.append(contentsOf: ["--title", resolvedTitle])
+            }
+            if !resolvedThumbnailUrl.isEmpty {
+                arguments.append(contentsOf: ["--thumbnail-url", resolvedThumbnailUrl])
+            }
+            if !mediaID.isEmpty {
+                arguments.append(contentsOf: ["--media-id", mediaID])
+            }
+
+            let data = try await runJSONCommand(arguments: arguments, logOutput: false)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let response = try decoder.decode(DownloadResponse.self, from: data)
+            appendLog("Imported ClickAPI download: \(response.fileName)")
+            await refreshLibrary()
+            videoURL = ""
+            resetResolvedVideoState()
+        } catch {
+            appendLog("ClickAPI import failed: \(error.localizedDescription)")
+        }
+    }
+
     func scheduleMetadataRefresh() {
         qualityRefreshTask?.cancel(); let trimmedURL = videoURL.trimmingCharacters(in: .whitespacesAndNewlines); if trimmedURL.isEmpty { resetResolvedVideoState(); return }
         if FileManager.default.fileExists(atPath: NSString(string: trimmedURL).expandingTildeInPath) { resetResolvedVideoState(); return }
@@ -317,6 +365,30 @@ final class ServerController {
             resetResolvedVideoState()
         } catch {
             appendLog("Add offloaded failed: \(error.localizedDescription)")
+        }
+    }
+
+    func ensureOffloadedItemForDirectDownload() async -> String? {
+        guard !isBusy else { return nil }
+        guard await ensurePythonReady() else { return nil }
+        let url = videoURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return nil }
+
+        isBusy = true
+        isAddingOffloaded = true
+        defer { isBusy = false; isAddingOffloaded = false }
+
+        do {
+            let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "add-offloaded", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let response = try decoder.decode(DownloadResponse.self, from: data)
+            appendLog("Prepared ClickAPI download item: \(response.fileName)")
+            await refreshLibrary()
+            return response.id
+        } catch {
+            appendLog("Prepare ClickAPI item failed: \(error.localizedDescription)")
+            return nil
         }
     }
 

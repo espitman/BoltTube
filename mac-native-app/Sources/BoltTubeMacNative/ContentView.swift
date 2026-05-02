@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var playingItem: MediaLibraryItem? = nil
     @State private var offloadedItemToDownload: MediaLibraryItem? = nil
     @State private var showDirectDownloadModal = false
+    @State private var directDownloadMediaID = ""
     @State private var player: AVPlayer? = nil
     
     @State private var showCreatePlaylist = false
@@ -58,7 +59,7 @@ struct ContentView: View {
         }
         .overlay { if let _ = playingItem { playerOverlay() } }
         .sheet(item: $offloadedItemToDownload) { item in OffloadedDownloadModal(controller: controller, item: item) }
-        .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal(videoURL: controller.videoURL) }
+        .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal(controller: controller, videoURL: controller.videoURL, mediaID: directDownloadMediaID) }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
         .sheet(isPresented: $showCreatePlaylist) { DialogModalView(title: "New Playlist", text: $newPlaylistName, onConfirm: { Task { await controller.createPlaylist(name: newPlaylistName); newPlaylistName = "" } }) }
@@ -394,7 +395,13 @@ struct ContentView: View {
             if controller.isDownloading { HStack(spacing: 12) { VStack(alignment: .leading, spacing: 6) { HStack { Text(controller.downloadProgressText).font(.vazir(size: 10, weight: .bold)).foregroundStyle(slate600).lineLimit(1); Spacer(); Text("\(Int(controller.downloadProgress * 100))%").font(.vazir(size: 11, weight: .black)).foregroundStyle(accentBlue) }; GeometryReader { gp in ZStack(alignment: .leading) { Capsule().fill(slate900.opacity(0.05)).frame(height: 6); Capsule().fill(accentBlue).frame(width: gp.size.width * controller.downloadProgress, height: 6) } }.frame(height: 6) }; Button { controller.cancelDownload() } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(Color.red.opacity(0.8)) }.buttonStyle(.plain) }.padding(.horizontal, 16).padding(.vertical, 8).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 12)).overlay(RoundedRectangle(cornerRadius: 12).stroke(slate900.opacity(0.1), lineWidth: 1)) }
             else {
                 HStack(spacing: 12) {
-                    Button { showDirectDownloadModal = true } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingMetadata || controller.resolvedTitle.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
+                    Button {
+                        Task {
+                            guard let mediaID = await controller.ensureOffloadedItemForDirectDownload() else { return }
+                            directDownloadMediaID = mediaID
+                            showDirectDownloadModal = true
+                        }
+                    } label: { HStack(spacing: 8) { Image(systemName: "arrow.down"); Text("Download") }.font(.vazir(size: 14, weight: .bold)).foregroundStyle(Color.white).frame(maxWidth: .infinity).frame(height: 46).background(controller.isResolvingMetadata || controller.resolvedTitle.isEmpty ? Color.gray.opacity(0.1) : accentBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
                     Button { Task { await controller.addOffloadedVideo() } } label: {
                         HStack(spacing: 8) {
                             if controller.isAddingOffloaded {
@@ -475,11 +482,18 @@ struct DesktopVideoPlayer: NSViewRepresentable {
 
 struct FreightpassDownloadModal: View {
     @Environment(\.dismiss) private var dismiss
+    var controller: ServerController
     let videoURL: String
+    let mediaID: String
     private let modalBackground = Color(red: 0.067, green: 0.094, blue: 0.153)
 
     var body: some View {
-        FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL)
+        FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL) { fileURL in
+            Task {
+                await controller.importDownloadedFile(at: fileURL, sourceURL: videoURL, mediaID: mediaID)
+                dismiss()
+            }
+        }
             .frame(width: 601, height: 614)
             .background(modalBackground)
             .overlay(alignment: .topTrailing) {
@@ -499,6 +513,7 @@ struct FreightpassDownloadModal: View {
 struct FreightpassWebView: NSViewRepresentable {
     let url: URL
     let videoURL: String
+    let onDownloadComplete: (URL) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
@@ -510,6 +525,7 @@ struct FreightpassWebView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.videoURL = videoURL
+        context.coordinator.onDownloadComplete = onDownloadComplete
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.allowsBackForwardNavigationGestures = true
@@ -519,6 +535,7 @@ struct FreightpassWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onDownloadComplete = onDownloadComplete
         guard context.coordinator.videoURL != videoURL else { return }
         context.coordinator.videoURL = videoURL
         webView.loadHTMLString(Self.widgetHTML(for: videoURL), baseURL: url)
@@ -530,6 +547,8 @@ struct FreightpassWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         var videoURL = ""
+        var onDownloadComplete: ((URL) -> Void)?
+        private var downloadDestinations: [ObjectIdentifier: URL] = [:]
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         }
@@ -575,25 +594,40 @@ struct FreightpassWebView: NSViewRepresentable {
         func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
             let fallbackName = response.suggestedFilename ?? "BoltTube-download"
             let filename = suggestedFilename.isEmpty ? fallbackName : suggestedFilename
-            let savePanel = NSSavePanel()
-            savePanel.nameFieldStringValue = filename
-            savePanel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            savePanel.canCreateDirectories = true
-            savePanel.isExtensionHidden = false
-
-            if savePanel.runModal() == .OK {
-                completionHandler(savePanel.url)
-            } else {
-                completionHandler(nil)
-            }
+            let destination = Self.uniqueDownloadURL(for: filename)
+            downloadDestinations[ObjectIdentifier(download)] = destination
+            print("DEBUG: ClickAPI widget saving download to \(destination.path)")
+            completionHandler(destination)
         }
 
         func downloadDidFinish(_ download: WKDownload) {
-            print("DEBUG: ClickAPI widget download finished.")
+            let key = ObjectIdentifier(download)
+            guard let destination = downloadDestinations.removeValue(forKey: key) else {
+                print("DEBUG: ClickAPI widget download finished without destination.")
+                return
+            }
+            print("DEBUG: ClickAPI widget download finished: \(destination.path)")
+            onDownloadComplete?(destination)
         }
 
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+            downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
             print("DEBUG: ClickAPI widget download failed: \(error.localizedDescription)")
+        }
+
+        private static func uniqueDownloadURL(for filename: String) -> URL {
+            let downloadsDirectory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+            let sanitized = filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "BoltTube-download.mp4" : filename
+            let base = (sanitized as NSString).deletingPathExtension
+            let ext = (sanitized as NSString).pathExtension
+            var candidate = downloadsDirectory.appendingPathComponent(sanitized)
+            var counter = 2
+            while FileManager.default.fileExists(atPath: candidate.path) {
+                let nextName = ext.isEmpty ? "\(base) \(counter)" : "\(base) \(counter).\(ext)"
+                candidate = downloadsDirectory.appendingPathComponent(nextName)
+                counter += 1
+            }
+            return candidate
         }
 
         private static func isAllowedModalURL(_ url: URL) -> Bool {
