@@ -124,7 +124,9 @@ struct ContentView: View {
             }
         }
         .overlay { if let _ = playingItem { playerOverlay() } }
-        .sheet(item: $offloadedItemToDownload) { item in OffloadedDownloadModal(controller: controller, item: item) }
+        .sheet(item: $offloadedItemToDownload) { item in
+            FreightpassDownloadModal(controller: controller, videoURL: item.sourceUrl ?? "", mediaID: item.id)
+        }
         .sheet(isPresented: $showDirectDownloadModal) { FreightpassDownloadModal(controller: controller, videoURL: controller.videoURL, mediaID: directDownloadMediaID) }
         .sheet(item: $itemToAddToPlaylist) { item in AddToPlaylistModal(controller: controller, item: item) }
         .sheet(item: $playlistToAddToChannel) { playlist in AddToChannelModal(controller: controller, playlist: playlist) }
