@@ -3,6 +3,72 @@ import AppKit
 import AVKit
 import WebKit
 
+@MainActor
+private enum DockProgressPresenter {
+    static func update(stage: String, percent: Double) {
+        let normalized = min(max(percent, 0), 100)
+        let tile = NSApp.dockTile
+        tile.contentView = DockProgressView(stage: stage, percent: normalized)
+        tile.badgeLabel = "\(Int(normalized))%"
+        tile.display()
+    }
+
+    static func clear() {
+        let tile = NSApp.dockTile
+        tile.contentView = nil
+        tile.badgeLabel = nil
+        tile.display()
+    }
+
+    static func bounce() {
+        NSApp.requestUserAttention(.informationalRequest)
+    }
+}
+
+private final class DockProgressView: NSView {
+    private let stage: String
+    private let percent: Double
+
+    init(stage: String, percent: Double) {
+        self.stage = stage
+        self.percent = percent
+        super.init(frame: NSRect(x: 0, y: 0, width: 128, height: 128))
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        let bounds = self.bounds
+        NSApp.applicationIconImage.draw(in: bounds)
+
+        let barBackground = NSRect(x: 12, y: 12, width: bounds.width - 24, height: 14)
+        let radius: CGFloat = 7
+        NSColor.black.withAlphaComponent(0.62).setFill()
+        NSBezierPath(roundedRect: barBackground, xRadius: radius, yRadius: radius).fill()
+
+        let fillWidth = max(0, barBackground.width * CGFloat(percent / 100))
+        if fillWidth > 0 {
+            let fillRect = NSRect(x: barBackground.minX, y: barBackground.minY, width: fillWidth, height: barBackground.height)
+            NSColor.systemBlue.setFill()
+            NSBezierPath(roundedRect: fillRect, xRadius: radius, yRadius: radius).fill()
+        }
+
+        let label = "\(stage) \(Int(percent))%"
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13, weight: .bold),
+            .foregroundColor: NSColor.white,
+            .paragraphStyle: paragraph
+        ]
+        NSString(string: label).draw(in: NSRect(x: 4, y: 31, width: bounds.width - 8, height: 18), withAttributes: attrs)
+    }
+}
+
 enum AppTab {
     case home; case library; case playlists; case profile; case settings
 }
@@ -491,6 +557,7 @@ struct FreightpassDownloadModal: View {
         FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL) { fileURL in
             Task {
                 await controller.importDownloadedFile(at: fileURL, sourceURL: videoURL, mediaID: mediaID)
+                DockProgressPresenter.clear()
                 dismiss()
             }
         }
@@ -507,6 +574,7 @@ struct FreightpassDownloadModal: View {
             }
         .frame(width: 601)
         .background(modalBackground)
+        .onDisappear { DockProgressPresenter.clear() }
     }
 }
 
@@ -517,7 +585,8 @@ struct FreightpassWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let contentController = WKUserContentController()
-        contentController.addUserScript(WKUserScript(source: Self.widgetScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        contentController.add(context.coordinator, name: "bolttubeProgress")
+        contentController.addUserScript(WKUserScript(source: Self.widgetScript, injectionTime: .atDocumentStart, forMainFrameOnly: false))
 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
@@ -545,21 +614,24 @@ struct FreightpassWebView: NSViewRepresentable {
         Coordinator()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "bolttubeProgress")
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
         var videoURL = ""
         var onDownloadComplete: ((URL) -> Void)?
         private var downloadDestinations: [ObjectIdentifier: URL] = [:]
+        private var lastDockStage = ""
+        private var lastDockPercent = -1
+        private var didBounceForReady = false
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if navigationAction.targetFrame == nil, let requestURL = navigationAction.request.url {
-                if Self.isAllowedModalURL(requestURL) {
-                    webView.load(URLRequest(url: requestURL))
-                } else {
-                    NSWorkspace.shared.open(requestURL)
-                }
+            if let requestURL = navigationAction.request.url {
+                print("DEBUG: Blocked ClickAPI popup: \(requestURL.absoluteString)")
             }
             return nil
         }
@@ -568,7 +640,7 @@ struct FreightpassWebView: NSViewRepresentable {
             if navigationAction.shouldPerformDownload {
                 decisionHandler(.download)
             } else if navigationAction.targetFrame?.isMainFrame == true, let requestURL = navigationAction.request.url, !Self.isAllowedModalURL(requestURL) {
-                NSWorkspace.shared.open(requestURL)
+                print("DEBUG: Blocked ClickAPI external navigation: \(requestURL.absoluteString)")
                 decisionHandler(.cancel)
             } else {
                 decisionHandler(.allow)
@@ -607,12 +679,34 @@ struct FreightpassWebView: NSViewRepresentable {
                 return
             }
             print("DEBUG: ClickAPI widget download finished: \(destination.path)")
+            DockProgressPresenter.update(stage: "Done", percent: 100)
+            DockProgressPresenter.bounce()
             onDownloadComplete?(destination)
         }
 
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
             downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
             print("DEBUG: ClickAPI widget download failed: \(error.localizedDescription)")
+            DockProgressPresenter.clear()
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "bolttubeProgress",
+                  let payload = message.body as? [String: Any],
+                  let stage = payload["stage"] as? String,
+                  let percent = payload["percent"] as? Double else {
+                return
+            }
+            let rounded = Int(percent.rounded())
+            guard stage != lastDockStage || rounded != lastDockPercent else { return }
+            lastDockStage = stage
+            lastDockPercent = rounded
+            print("DEBUG: ClickAPI progress \(stage) \(rounded)%")
+            DockProgressPresenter.update(stage: stage, percent: percent)
+            if stage == "Ready", !didBounceForReady {
+                didBounceForReady = true
+                DockProgressPresenter.bounce()
+            }
         }
 
         private static func uniqueDownloadURL(for filename: String) -> URL {
@@ -678,6 +772,108 @@ struct FreightpassWebView: NSViewRepresentable {
 
     private static let widgetScript = """
     (() => {
+      if (window.__bolttubeProgressScannerInstalled) return;
+      window.__bolttubeProgressScannerInstalled = true;
+
+      const postProgress = (() => {
+        let lastPayload = '';
+        return (stage, percent) => {
+          if (!Number.isFinite(percent)) return;
+          const normalized = Math.max(0, Math.min(100, percent));
+          const payload = JSON.stringify({ stage, percent: normalized });
+          if (payload === lastPayload) return;
+          lastPayload = payload;
+          window.webkit?.messageHandlers?.bolttubeProgress?.postMessage({ stage, percent: normalized });
+        };
+      })();
+
+      const getText = () => (document.body?.innerText || document.documentElement?.innerText || '').replace(/\\s+/g, ' ').trim();
+
+      const detectStage = (text) => {
+        const lower = text.toLowerCase();
+        if (lower.includes('download complete')) return 'Done';
+        if (lower.includes('downloading') || lower.includes('save again')) return 'Downloading';
+        if (lower.includes('ready for download')) return 'Ready';
+        if (lower.includes('converting') || lower.includes('conversion') || lower.includes('preparing') || lower.includes('initializing') || lower.includes('total progress') || lower.includes('processing')) return 'Converting';
+        if (lower.includes('download')) return 'Downloading';
+        return 'Working';
+      };
+
+      const readNumericPercent = (value) => {
+        if (value == null) return null;
+        const parsed = Number.parseFloat(String(value).replace('%', '').trim());
+        if (!Number.isFinite(parsed)) return null;
+        return Math.max(0, Math.min(100, parsed));
+      };
+
+      const collectElementPercents = () => {
+        const values = [];
+        document.querySelectorAll('progress').forEach((element) => {
+          const value = Number.parseFloat(element.getAttribute('value') || element.value);
+          const max = Number.parseFloat(element.getAttribute('max') || element.max || '100') || 100;
+          if (Number.isFinite(value)) values.push(Math.max(0, Math.min(100, value / max * 100)));
+        });
+        document.querySelectorAll('[aria-valuenow]').forEach((element) => {
+          const value = readNumericPercent(element.getAttribute('aria-valuenow'));
+          const max = readNumericPercent(element.getAttribute('aria-valuemax')) || 100;
+          if (value != null) values.push(Math.max(0, Math.min(100, value / max * 100)));
+        });
+        document.querySelectorAll('[style*="%"]').forEach((element) => {
+          const style = element.getAttribute('style') || '';
+          const match = style.match(/(?:width|transform)[^;]*?([0-9]{1,3}(?:\\.[0-9]+)?)%/i);
+          if (match) {
+            const value = readNumericPercent(match[1]);
+            if (value != null) values.push(value);
+          }
+        });
+        return values;
+      };
+
+      const collectTextPercents = (text) => {
+        const values = [];
+        const matches = text.matchAll(/([0-9]{1,3}(?:\\.[0-9]+)?)\\s*%/g);
+        for (const match of matches) {
+          const value = readNumericPercent(match[1]);
+          if (value != null) values.push(value);
+        }
+        return values;
+      };
+
+      const scanProgress = () => {
+        const text = getText();
+        const stage = detectStage(text);
+        if (stage === 'Ready' || stage === 'Done') {
+          postProgress(stage, 100);
+          return;
+        }
+        const percents = [...collectElementPercents(), ...collectTextPercents(text)];
+        if (!percents.length) return;
+        const percent = stage === 'Downloading' ? percents[percents.length - 1] : Math.max(...percents);
+        postProgress(stage, percent);
+      };
+
+      const scheduleScan = (() => {
+        let pending = false;
+        return () => {
+          if (pending) return;
+          pending = true;
+          window.setTimeout(() => {
+            pending = false;
+            scanProgress();
+          }, 120);
+        };
+      })();
+
+      scanProgress();
+      window.setInterval(scanProgress, 650);
+      new MutationObserver(scheduleScan).observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['style', 'class', 'value', 'aria-valuenow', 'aria-valuemax']
+      });
+
       document.addEventListener('contextmenu', (event) => event.preventDefault(), true);
       document.addEventListener('selectstart', (event) => event.preventDefault(), true);
       document.addEventListener('dragstart', (event) => event.preventDefault(), true);
