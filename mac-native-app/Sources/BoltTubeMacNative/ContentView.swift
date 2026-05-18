@@ -21,7 +21,7 @@ private enum DockProgressPresenter {
     }
 
     static func bounce() {
-        NSApp.requestUserAttention(.informationalRequest)
+        NSApp.requestUserAttention(.criticalRequest)
     }
 }
 
@@ -625,6 +625,7 @@ struct FreightpassWebView: NSViewRepresentable {
         private var lastDockStage = ""
         private var lastDockPercent = -1
         private var didBounceForReady = false
+        private var didBounceForDownloadComplete = false
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         }
@@ -680,7 +681,10 @@ struct FreightpassWebView: NSViewRepresentable {
             }
             print("DEBUG: ClickAPI widget download finished: \(destination.path)")
             DockProgressPresenter.update(stage: "Done", percent: 100)
-            DockProgressPresenter.bounce()
+            if !didBounceForDownloadComplete {
+                didBounceForDownloadComplete = true
+                DockProgressPresenter.bounce()
+            }
             onDownloadComplete?(destination)
         }
 
@@ -705,6 +709,10 @@ struct FreightpassWebView: NSViewRepresentable {
             DockProgressPresenter.update(stage: stage, percent: percent)
             if stage == "Ready", !didBounceForReady {
                 didBounceForReady = true
+                DockProgressPresenter.bounce()
+            }
+            if (stage == "Done" || stage == "Downloading") && rounded >= 100 && !didBounceForDownloadComplete {
+                didBounceForDownloadComplete = true
                 DockProgressPresenter.bounce()
             }
         }
@@ -839,11 +847,24 @@ struct FreightpassWebView: NSViewRepresentable {
         return values;
       };
 
+      const clickDownloadNowIfReady = () => {
+        if (sessionStorage.getItem('bolttubeAutoClickedDownloadNow') === '1') return;
+        const controls = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]'));
+        const downloadButton = controls.find((element) => {
+          const text = ((element.innerText || element.value || element.getAttribute('aria-label') || '') + '').replace(/\\s+/g, ' ').trim().toLowerCase();
+          return text === 'download now' || text === 'download' || text.includes('download now');
+        });
+        if (!downloadButton) return;
+        sessionStorage.setItem('bolttubeAutoClickedDownloadNow', '1');
+        window.setTimeout(() => downloadButton.click(), 120);
+      };
+
       const scanProgress = () => {
         const text = getText();
         const stage = detectStage(text);
         if (stage === 'Ready' || stage === 'Done') {
           postProgress(stage, 100);
+          if (stage === 'Ready') clickDownloadNowIfReady();
           return;
         }
         const percents = [...collectElementPercents(), ...collectTextPercents(text)];
