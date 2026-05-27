@@ -1,6 +1,8 @@
 package ir.boum.bolttube.tv
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -359,6 +361,12 @@ private class TvVideoCardAdapter(
 ) : RecyclerView.Adapter<TvVideoCardAdapter.VideoViewHolder>() {
 
     companion object {
+        private const val DOWNLOAD_ACTIVE = "#2563EB"
+        private const val DOWNLOAD_PROCESSING = "#475569"
+        private const val DOWNLOAD_AMBER = "#B45309"
+        private const val DOWNLOAD_RED = "#B91C1C"
+        private const val DOWNLOAD_DARK = "#14233A"
+        private val progressSamples = mutableMapOf<String, ProgressSample>()
     }
 
     private val items = mutableListOf<VideoItem>()
@@ -438,9 +446,13 @@ private class TvVideoCardAdapter(
 
         fun bind(item: VideoItem) {
             boundItem = item
+            val activeDownload = item.downloadStatus?.takeIf { it.isVisibleOnCard() }
             titleView.text = item.title
             titleView.isSelected = itemView.isFocused
-            dateView.text = formatCreatedDate(item.createdAt)
+            dateView.text = activeDownload?.let { formatDownloadDetails(item.id, it) } ?: formatCreatedDate(item.createdAt)
+            dateView.setTextColor(
+                Color.parseColor(if (activeDownload != null) "#64748B" else "#9AA4B2")
+            )
             
             if (item.duration > 0) {
                 badgeView.text = formatDuration(item.duration.toLong())
@@ -449,18 +461,10 @@ private class TvVideoCardAdapter(
                 badgeView.visibility = View.GONE
             }
 
-            val activeDownload = item.downloadStatus?.takeIf { it.isVisibleOnCard() }
             uploadBadgeView.visibility = if (item.isOffloaded || activeDownload != null) View.VISIBLE else View.GONE
-            uploadBadgeView.text = when {
-                activeDownload?.status == "failed" -> "FAILED"
-                activeDownload?.status == "converting" -> "CV ${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
-                activeDownload?.status == "ready" -> "READY"
-                activeDownload?.status == "downloading" -> "DL ${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
-                activeDownload?.status == "completed" -> "DONE"
-                activeDownload != null -> "${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
-                item.isOffloaded -> "OFFLOADED"
-                else -> ""
-            }
+            uploadBadgeView.text = activeDownload?.let(::formatDownloadBadge) ?: if (item.isOffloaded) "OFFLOADED" else ""
+            uploadBadgeView.setTextColor(Color.WHITE)
+            uploadBadgeView.background = createBadgeBackground(activeDownload)
             imageView.alpha = if (item.isOffloaded) 0.5f else 1f
 
             try {
@@ -519,6 +523,115 @@ private class TvVideoCardAdapter(
 
         private fun OffloadedDownloadStatus.isVisibleOnCard(): Boolean {
             return status in setOf("queued", "resolving", "converting", "ready", "downloading", "merging", "completed", "failed") || fraction > 0.0
+        }
+
+        private fun formatDownloadBadge(status: OffloadedDownloadStatus): String {
+            val percent = (status.fraction * 100).toInt().coerceIn(0, 100)
+            return when (status.status) {
+                "failed" -> "FAILED"
+                "converting" -> "CONVERT $percent%"
+                "ready" -> "READY"
+                "downloading" -> "DOWNLOAD $percent%"
+                "completed" -> "DONE"
+                "merging" -> "MERGING"
+                "queued" -> "QUEUED"
+                "resolving" -> "STARTING"
+                else -> "$percent%"
+            }
+        }
+
+        private fun createBadgeBackground(status: OffloadedDownloadStatus?): GradientDrawable {
+            val color = when (status?.status) {
+                "failed" -> DOWNLOAD_RED
+                "completed" -> DOWNLOAD_PROCESSING
+                "downloading" -> DOWNLOAD_ACTIVE
+                "converting", "ready", "merging" -> DOWNLOAD_PROCESSING
+                "queued", "resolving" -> DOWNLOAD_AMBER
+                else -> DOWNLOAD_DARK
+            }
+            val strokeColor = when (status?.status) {
+                "failed" -> "#EF4444"
+                "completed" -> "#94A3B8"
+                "downloading" -> "#60A5FA"
+                "converting", "ready", "merging" -> "#94A3B8"
+                "queued", "resolving" -> "#F59E0B"
+                else -> "#64748B"
+            }
+            return GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 999f
+                setColor(Color.parseColor(color))
+                setStroke(1, Color.parseColor(strokeColor))
+            }
+        }
+
+        private fun formatDownloadDetails(mediaId: String, status: OffloadedDownloadStatus): String {
+            val percent = (status.fraction * 100).toInt().coerceIn(0, 100)
+            val stage = when (status.status) {
+                "converting" -> "Converting"
+                "downloading" -> "Downloading"
+                "merging" -> "Merging"
+                "ready" -> "Ready"
+                "completed" -> "Completed"
+                "failed" -> "Failed"
+                "queued" -> "Queued"
+                "resolving" -> "Starting"
+                else -> "Working"
+            }
+            val parts = mutableListOf("$stage $percent%")
+            if (status.speedBytesPerSecond > 0.0) {
+                parts += "${formatSpeed(status.speedBytesPerSecond)}/s"
+            }
+            estimateEta(mediaId, status)?.let { parts += "$it left" }
+            if (status.error.isNotBlank()) {
+                parts += status.error.take(28)
+            }
+            return parts.joinToString(" | ")
+        }
+
+        private fun estimateEta(mediaId: String, status: OffloadedDownloadStatus): String? {
+            val fraction = status.fraction.coerceIn(0.0, 1.0)
+            if (fraction <= 0.0 || fraction >= 1.0 || status.status in setOf("completed", "failed", "ready")) {
+                progressSamples.remove(mediaId)
+                return null
+            }
+
+            if (status.totalBytes > 0.0 && status.speedBytesPerSecond > 0.0) {
+                val remainingBytes = (status.totalBytes - status.downloadedBytes).coerceAtLeast(0.0)
+                return formatDurationShort((remainingBytes / status.speedBytesPerSecond).toLong())
+            }
+
+            val now = System.currentTimeMillis()
+            val previous = progressSamples[mediaId]
+            val nextRate = if (previous != null && fraction > previous.fraction && now > previous.timestampMs) {
+                val elapsedSeconds = (now - previous.timestampMs) / 1000.0
+                ((fraction - previous.fraction) / elapsedSeconds).takeIf { it > 0.0 } ?: previous.fractionPerSecond
+            } else {
+                previous?.fractionPerSecond ?: 0.0
+            }
+            progressSamples[mediaId] = ProgressSample(fraction, now, nextRate)
+            if (nextRate <= 0.0) return null
+            return formatDurationShort(((1.0 - fraction) / nextRate).toLong())
+        }
+
+        private fun formatSpeed(bytesPerSecond: Double): String {
+            return when {
+                bytesPerSecond >= 1024 * 1024 -> String.format("%.1f MB", bytesPerSecond / (1024 * 1024))
+                bytesPerSecond >= 1024 -> String.format("%.0f KB", bytesPerSecond / 1024)
+                else -> String.format("%.0f B", bytesPerSecond)
+            }
+        }
+
+        private fun formatDurationShort(seconds: Long): String {
+            val safeSeconds = seconds.coerceAtLeast(0)
+            val hours = safeSeconds / 3600
+            val minutes = (safeSeconds % 3600) / 60
+            val secs = safeSeconds % 60
+            return when {
+                hours > 0 -> "${hours}h ${minutes}m"
+                minutes > 0 -> "${minutes}m ${secs}s"
+                else -> "${secs}s"
+            }
         }
 
         private fun formatCreatedDate(createdAt: String): String {
@@ -587,3 +700,9 @@ private class TvVideoCardAdapter(
 
     }
 }
+
+private data class ProgressSample(
+    val fraction: Double,
+    val timestampMs: Long,
+    val fractionPerSecond: Double,
+)
