@@ -15,7 +15,7 @@ import android.widget.TextView
 import androidx.core.os.bundleOf
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -26,7 +26,9 @@ import kotlinx.coroutines.launch
 
 class OffloadedDownloadDialogFragment : DialogFragment() {
 
-    private val viewModel: TvViewModel by activityViewModels()
+    private val viewModel: TvViewModel by lazy(LazyThreadSafetyMode.NONE) {
+        ViewModelProvider(requireActivity())[TvViewModel::class.java]
+    }
     private val repository = MediaRepository()
 
     private lateinit var thumbnailView: ImageView
@@ -237,6 +239,8 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
         when (status.status) {
             "queued" -> updateStatus("Queued...")
             "resolving" -> updateStatus("Resolving qualities...")
+            "converting" -> updateStatus("Converting...")
+            "ready" -> updateStatus("Ready for download")
             "downloading" -> updateStatus(
                 buildString {
                     append("Downloading")
@@ -253,7 +257,7 @@ class OffloadedDownloadDialogFragment : DialogFragment() {
             else -> updateStatus("Preparing download...")
         }
         spinnerView.visibility = if (status.status in setOf("queued", "resolving")) View.VISIBLE else View.GONE
-        val showProgress = status.status in setOf("downloading", "merging", "completed")
+        val showProgress = status.status in setOf("converting", "ready", "downloading", "merging", "completed")
         progressContainer.visibility = if (showProgress) View.VISIBLE else View.GONE
         progressBar.visibility = if (showProgress) View.VISIBLE else View.INVISIBLE
         progressPercentView.visibility = if (showProgress) View.VISIBLE else View.INVISIBLE

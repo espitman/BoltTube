@@ -90,6 +90,7 @@ data class VideoItem(
     val createdAt: String,
     val duration: Int,
     val isOffloaded: Boolean,
+    val downloadStatus: OffloadedDownloadStatus? = null,
 ) : TvRowItem
 
 @Serializable
@@ -158,6 +159,7 @@ data class TvUiState(
     val selectedPlaylist: PlaylistSummary? = null,
     val playlistContent: List<MediaSummary> = emptyList(),
     val playlistLoading: Boolean = false,
+    val downloadStatuses: Map<String, OffloadedDownloadStatus> = emptyMap(),
     val loading: Boolean = false,
     val message: String = "",
     val error: String = "",

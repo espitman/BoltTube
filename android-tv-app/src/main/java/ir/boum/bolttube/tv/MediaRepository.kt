@@ -5,13 +5,24 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.websocket.WebSockets
+import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import io.ktor.websocket.Frame
+import io.ktor.websocket.readText
+import io.ktor.websocket.send
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class MediaRepository {
     private val json = Json { ignoreUnknownKeys = true }
@@ -32,6 +43,7 @@ class MediaRepository {
         install(ContentNegotiation) {
             json(json)
         }
+        install(WebSockets)
     }
 
     suspend fun fetchLibrary(serverUrl: String): List<MediaSummary> {
@@ -100,6 +112,50 @@ class MediaRepository {
             contentType(ContentType.Application.Json)
             setBody(mapOf("id" to mediaId))
         }.body()
+    }
+
+    suspend fun observeRealtime(
+        serverUrl: String,
+        outgoingCommands: Flow<String>,
+        onEvent: suspend (JsonObject) -> Unit,
+    ) {
+        val wsUrl = serverUrl.trim().trimEnd('/')
+            .replaceFirst("https://", "wss://")
+            .replaceFirst("http://", "ws://") + "/ws"
+        client.webSocket(urlString = wsUrl) {
+            send(buildJsonObject { put("type", "hello") }.toString())
+            coroutineScope {
+                val sender = launch {
+                    outgoingCommands.collect { command ->
+                        send(command)
+                    }
+                }
+                try {
+                    for (frame in incoming) {
+                        if (frame is Frame.Text) {
+                            val payload = json.parseToJsonElement(frame.readText()) as? JsonObject ?: continue
+                            onEvent(payload)
+                        }
+                    }
+                } finally {
+                    sender.cancel()
+                }
+            }
+        }
+    }
+
+    suspend fun sendPlaybackProgress(serverUrl: String, mediaId: String, positionMs: Long, durationMs: Long) {
+        val normalized = serverUrl.trim().trimEnd('/')
+        client.post("$normalized/api/playback-progress") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                mapOf(
+                    "mediaId" to mediaId,
+                    "positionMs" to positionMs,
+                    "durationMs" to durationMs,
+                ),
+            )
+        }
     }
 
     fun close() {

@@ -4,12 +4,12 @@ import android.os.Bundle
 import android.view.View
 import android.view.Gravity
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
-class VideoPlayerActivity : AppCompatActivity() {
+class VideoPlayerActivity : FragmentActivity() {
 
     private var player: ExoPlayer? = null
     private lateinit var playerView: PlayerView

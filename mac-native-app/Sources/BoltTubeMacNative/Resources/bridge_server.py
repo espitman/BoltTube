@@ -18,6 +18,8 @@ from typing import Optional, List, Dict, Union, Any
 
 from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
+from flask_sock import Sock
+from simple_websocket import ConnectionClosed
 from pytubefix import YouTube
 
 try:
@@ -35,6 +37,7 @@ except ImportError:
 
 app = Flask(__name__)
 CORS(app)
+sock = Sock(app)
 library: Optional[MediaLibrary] = None
 RESOLVE_CLIENTS = ("ANDROID_VR", "IOS", "TV", "WEB")
 CLIENT_PROBE_TIMEOUT = 10
@@ -44,8 +47,38 @@ YOUTUBE_API_RETRIES = 3
 YOUTUBE_API_TIMEOUT = 8
 download_jobs: Dict[str, Dict[str, Any]] = {}
 download_jobs_lock = threading.RLock()
+ws_clients = set()
+ws_clients_lock = threading.RLock()
+playback_progress: Dict[str, Dict[str, Any]] = {}
+seen_states: Dict[str, Dict[str, Any]] = {}
 resolved_client_cache: Dict[str, str] = {}
 resolved_client_cache_lock = threading.RLock()
+
+def _library_items() -> List[Dict[str, Any]]:
+    return library.list_items() if library else []
+
+def _ws_send(ws, payload: Dict[str, Any]):
+    ws.send(json.dumps(payload, ensure_ascii=False))
+
+def _broadcast_ws(payload: Dict[str, Any]):
+    dead = []
+    with ws_clients_lock:
+        clients = list(ws_clients)
+    for client in clients:
+        try:
+            _ws_send(client, payload)
+        except Exception:
+            dead.append(client)
+    if dead:
+        with ws_clients_lock:
+            for client in dead:
+                ws_clients.discard(client)
+
+def _broadcast_library_updated(reason: str):
+    _broadcast_ws({"type": "library_updated", "reason": reason, "items": _library_items()})
+
+def _broadcast_download_status(media_id: str, status: Dict[str, Any]):
+    _broadcast_ws({"type": "download_status", "mediaId": media_id, "status": status})
 
 def readable_size(num: int) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
@@ -352,7 +385,8 @@ def _set_download_job(media_id: str, **fields):
         current = download_jobs.get(media_id, {}).copy()
         current.update(fields)
         download_jobs[media_id] = current
-        return current
+    _broadcast_download_status(media_id, current)
+    return current
 
 def _start_offloaded_download(media_id: str, url: str, format_id: str, preferred_client: Optional[str] = None) -> Dict[str, Any]:
     item = library.repo.get_item(media_id) if library else None
@@ -440,14 +474,31 @@ def _start_offloaded_download(media_id: str, url: str, format_id: str, preferred
     threading.Thread(target=worker, daemon=True).start()
     return download_jobs[media_id]
 
-def _add_offloaded_item(url: str, client: str) -> Dict[str, Any]:
-    payload = _resolve_payload_with_fallback(url)
+def _add_offloaded_item(url: str, client: str, title: str = "", thumbnail_url: str = "", duration: int = 0) -> Dict[str, Any]:
     item = library.add_offloaded(
         source_url=url,
-        thumbnail_url=str(payload.get("thumbnail_url") or ""),
-        duration=int(payload.get("duration_seconds") or 0),
-        title=str(payload.get("title") or "Untitled"),
+        thumbnail_url=thumbnail_url,
+        duration=duration,
+        title=title or "Preparing video",
     )
+    _broadcast_library_updated("add_offloaded")
+
+    def enrich_metadata():
+        if title and thumbnail_url and duration > 0:
+            return
+        try:
+            payload = _fetch_youtube_api_metadata(url)
+            library.add_offloaded(
+                source_url=url,
+                thumbnail_url=str(payload.get("thumbnail_url") or ""),
+                duration=int(payload.get("duration_seconds") or 0),
+                title=str(payload.get("title") or "Untitled"),
+            )
+            _broadcast_library_updated("offloaded_metadata")
+        except Exception:
+            pass
+
+    threading.Thread(target=enrich_metadata, daemon=True).start()
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
 def _import_downloaded_file(file_path: str, source_url: str = "", title: str = "", thumbnail_url: str = "", duration: int = 0, media_id: str = "") -> Dict[str, Any]:
@@ -461,14 +512,66 @@ def _import_downloaded_file(file_path: str, source_url: str = "", title: str = "
         title=title,
         existing_media_id=media_id or None,
     )
+    _broadcast_library_updated("import_file")
     return {"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}
 
 @app.route("/health")
 def health(): return jsonify({"status": "ok", "port": 9864, "download_dir": str(library.download_dir) if library else ""})
 
+@sock.route("/ws")
+def realtime_socket(ws):
+    with ws_clients_lock:
+        ws_clients.add(ws)
+    try:
+        _ws_send(ws, {"type": "connected", "items": _library_items()})
+        while True:
+            raw = ws.receive()
+            if raw is None:
+                break
+            try:
+                data = json.loads(raw)
+            except (TypeError, json.JSONDecodeError):
+                _ws_send(ws, {"type": "error", "message": "Invalid JSON"})
+                continue
+
+            message_type = data.get("type", "")
+            media_id = data.get("mediaId") or data.get("id")
+            if message_type in {"hello", "refresh_library"}:
+                _ws_send(ws, {"type": "library_snapshot", "items": _library_items()})
+            elif message_type == "delete_item" and media_id:
+                ok = bool(library and library.remove(media_id))
+                _broadcast_library_updated("delete_item")
+                _ws_send(ws, {"type": "action_result", "action": "delete_item", "mediaId": media_id, "ok": ok})
+            elif message_type == "offload_item" and media_id:
+                ok = bool(library and library.offload(media_id))
+                _broadcast_library_updated("offload_item")
+                _ws_send(ws, {"type": "action_result", "action": "offload_item", "mediaId": media_id, "ok": ok})
+            elif message_type == "playback_progress" and media_id:
+                playback_progress[media_id] = {
+                    "mediaId": media_id,
+                    "positionMs": data.get("positionMs", 0),
+                    "durationMs": data.get("durationMs", 0),
+                    "updatedAt": time.time(),
+                }
+                _broadcast_ws({"type": "playback_progress", "mediaId": media_id, "progress": playback_progress[media_id]})
+            elif message_type == "seen_state" and media_id:
+                seen_states[media_id] = {
+                    "mediaId": media_id,
+                    "seen": bool(data.get("seen", True)),
+                    "updatedAt": time.time(),
+                }
+                _broadcast_ws({"type": "seen_state", "mediaId": media_id, "seen": seen_states[media_id]})
+            else:
+                _ws_send(ws, {"type": "error", "message": f"Unsupported message: {message_type}"})
+    except ConnectionClosed:
+        pass
+    finally:
+        with ws_clients_lock:
+            ws_clients.discard(ws)
+
 @app.route("/api/items")
 def list_library():
-    return jsonify({"items": library.list_items() if library else []})
+    return jsonify({"items": _library_items()})
 
 @app.route("/api/playlists")
 def list_playlists():
@@ -480,6 +583,7 @@ def create_playlist():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
     p_id = library.repo.create_playlist(data["name"], data.get("thumbnailUrl"))
+    _broadcast_library_updated("create_playlist")
     return jsonify({"status": "ok", "id": p_id})
 
 @app.route("/api/playlists/add", methods=["POST"])
@@ -487,12 +591,14 @@ def add_to_playlist():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
     library.repo.add_to_playlist(int(data["playlistId"]), data["mediaId"])
+    _broadcast_library_updated("add_to_playlist")
     return jsonify({"status": "ok"})
 
 @app.route("/api/playlists/delete", methods=["POST"])
 def delete_playlist():
     if not library: return jsonify({"error": "not init"}), 500
     library.repo.delete_playlist(int(request.json["id"]))
+    _broadcast_library_updated("delete_playlist")
     return jsonify({"status": "ok"})
 
 @app.route("/api/playlists/update", methods=["POST"])
@@ -500,6 +606,7 @@ def update_playlist():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
     library.repo.update_playlist(int(data["id"]), data["name"])
+    _broadcast_library_updated("update_playlist")
     return jsonify({"status": "ok"})
 
 @app.route("/api/playlists/<int:p_id>/items")
@@ -564,6 +671,7 @@ def create_channel():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
     c_id = library.repo.create_channel(data["name"], data.get("thumbnailUrl"))
+    _broadcast_library_updated("create_channel")
     return jsonify({"status": "ok", "id": c_id})
 
 @app.route("/api/channels/add", methods=["POST"])
@@ -571,12 +679,14 @@ def add_playlist_to_channel():
     if not library: return jsonify({"error": "not init"}), 500
     data = request.json
     library.repo.add_playlist_to_channel(int(data["channelId"]), int(data["playlistId"]))
+    _broadcast_library_updated("add_playlist_to_channel")
     return jsonify({"status": "ok"})
 
 @app.route("/api/channels/delete", methods=["POST"])
 def delete_channel():
     if not library: return jsonify({"error": "not init"}), 500
     library.repo.delete_channel(int(request.json["id"]))
+    _broadcast_library_updated("delete_channel")
     return jsonify({"status": "ok"})
 
 @app.route("/api/channels/update", methods=["POST"])
@@ -585,6 +695,7 @@ def update_channel():
     data = request.json
     try:
         library.repo.update_channel(int(data["id"]), data["name"])
+        _broadcast_library_updated("update_channel")
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 400
@@ -592,7 +703,13 @@ def update_channel():
 @app.route("/api/list")
 def list_library_v2():
     if not library: return jsonify({"items": []})
-    return jsonify({"items": library.list_items()})
+    return jsonify({"items": _library_items()})
+
+@app.route("/api/realtime/library-updated", methods=["POST"])
+def realtime_library_updated():
+    data = request.json or {}
+    _broadcast_library_updated(data.get("reason") or "external_update")
+    return jsonify({"status": "ok"})
 
 @app.route("/media/<media_id>")
 def serve_video(media_id):
@@ -677,11 +794,53 @@ def offloaded_download_status(media_id):
         "streamUrl": item.get("stream_url") or "",
     })
 
+@app.route("/api/offloaded/download-status", methods=["POST"])
+def update_external_download_status():
+    data = request.json or {}
+    media_id = data.get("mediaId") or data.get("id")
+    if not media_id:
+        return jsonify({"error": "Missing media id"}), 400
+    item = library.repo.get_item(media_id) if library else None
+    if item is None:
+        return jsonify({"error": "Media item not found"}), 404
+    status = data.get("status") or "downloading"
+    try:
+        fraction = max(0.0, min(float(data.get("fraction", 0.0)), 1.0))
+    except (TypeError, ValueError):
+        fraction = 0.0
+    def _float_value(key: str) -> float:
+        try:
+            return float(data.get(key) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    _set_download_job(
+        media_id,
+        mediaId=media_id,
+        status=status,
+        fraction=fraction,
+        downloadedBytes=_float_value("downloadedBytes"),
+        totalBytes=_float_value("totalBytes"),
+        speedBytesPerSecond=_float_value("speedBytesPerSecond"),
+        error=data.get("error") or "",
+        title=data.get("title") or item.get("title") or "",
+        thumbnailUrl=data.get("thumbnailUrl") or item.get("thumbnail_url") or "",
+        sourceUrl=data.get("sourceUrl") or item.get("source_url") or "",
+        fileName=data.get("fileName") or item.get("file_name") or "",
+        streamUrl=data.get("streamUrl") or item.get("stream_url") or "",
+    )
+    return jsonify(download_jobs[media_id])
+
 @app.route("/api/add-offloaded", methods=["POST"])
 def add_offloaded():
     data = request.json
     try:
-        return jsonify(_run_bridge_cli("add-offloaded", url=data["url"]))
+        return jsonify(_add_offloaded_item(
+            data["url"],
+            data.get("preferredClient") or "WEB",
+            title=str(data.get("title") or ""),
+            thumbnail_url=str(data.get("thumbnailUrl") or ""),
+            duration=int(data.get("durationSeconds") or 0),
+        ))
     except RuntimeError as error:
         return jsonify({"error": str(error)}), 504
 
@@ -707,17 +866,53 @@ def import_file():
 
 @app.route("/api/delete", methods=["POST"])
 def delete():
-    return jsonify({"status": "deleted" if library.remove(request.json["id"]) else "not_found"})
+    deleted = bool(library.remove(request.json["id"]))
+    if deleted:
+        _broadcast_library_updated("delete_item")
+    return jsonify({"status": "deleted" if deleted else "not_found"})
 
 @app.route("/api/offload", methods=["POST"])
 def offload():
     if not library: return jsonify({"error": "not init"}), 500
     res = library.offload(request.json["id"])
+    if res:
+        _broadcast_library_updated("offload_item")
     return jsonify({"status": "offloaded" if res else "not_found"})
+
+@app.route("/api/playback-progress", methods=["POST"])
+def playback_progress_update():
+    data = request.json or {}
+    media_id = data.get("mediaId") or data.get("id")
+    if not media_id:
+        return jsonify({"error": "Missing media id"}), 400
+    playback_progress[media_id] = {
+        "mediaId": media_id,
+        "positionMs": data.get("positionMs", 0),
+        "durationMs": data.get("durationMs", 0),
+        "updatedAt": time.time(),
+    }
+    _broadcast_ws({"type": "playback_progress", "mediaId": media_id, "progress": playback_progress[media_id]})
+    return jsonify({"status": "ok"})
+
+@app.route("/api/seen-state", methods=["POST"])
+def seen_state_update():
+    data = request.json or {}
+    media_id = data.get("mediaId") or data.get("id")
+    if not media_id:
+        return jsonify({"error": "Missing media id"}), 400
+    seen_states[media_id] = {
+        "mediaId": media_id,
+        "seen": bool(data.get("seen", True)),
+        "updatedAt": time.time(),
+    }
+    _broadcast_ws({"type": "seen_state", "mediaId": media_id, "seen": seen_states[media_id]})
+    return jsonify({"status": "ok"})
 
 @app.route("/api/refresh-metadata", methods=["POST"])
 def refresh():
-    return jsonify({"status": "ok", "metadata": library.refresh_metadata(request.json["id"])})
+    metadata = library.refresh_metadata(request.json["id"])
+    _broadcast_library_updated("refresh_metadata")
+    return jsonify({"status": "ok", "metadata": metadata})
 
 def main():
     global library
@@ -737,12 +932,11 @@ def main():
         client = args.preferred_client or _client_candidates(args.url)[0]
         print(json.dumps(_download_with_progress(args.url, args.format_id, client, args.media_id)))
     elif args.command == "add-offloaded":
-        payload = _fetch_youtube_api_metadata(args.url)
         item = library.add_offloaded(
             source_url=args.url,
-            thumbnail_url=str(payload.get("thumbnail_url") or ""),
-            duration=int(payload.get("duration_seconds") or 0),
-            title=str(payload.get("title") or "Untitled"),
+            thumbnail_url=args.thumbnail_url or "",
+            duration=args.duration or 0,
+            title=args.title or "Preparing video",
         )
         print(json.dumps({"id": item.id, "stream_url": item.stream_url, "file_name": item.file_name}))
     elif args.command == "import-file":

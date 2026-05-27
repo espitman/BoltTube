@@ -11,7 +11,6 @@ import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
-import androidx.appcompat.app.AppCompatDialog
 import androidx.fragment.app.DialogFragment
 
 class ServerConfigDialogFragment : DialogFragment() {
@@ -46,7 +45,7 @@ class ServerConfigDialogFragment : DialogFragment() {
             }
         }
 
-        val dialog = AppCompatDialog(context, R.style.Theme_BoltTubeTV_Dialog)
+        val dialog = Dialog(context, R.style.Theme_BoltTubeTV_Dialog)
         dialog.setContentView(content)
         dialog.setCanceledOnTouchOutside(true)
         dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)

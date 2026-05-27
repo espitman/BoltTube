@@ -556,7 +556,7 @@ struct FreightpassDownloadModal: View {
     private let modalBackground = Color(red: 0.067, green: 0.094, blue: 0.153)
 
     var body: some View {
-        FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL) { fileURL in
+        FreightpassWebView(url: URL(string: "https://clickapi.net/")!, videoURL: videoURL, mediaID: mediaID, statusBaseURL: controller.serverURLDisplay) { fileURL in
             Task {
                 await controller.importDownloadedFile(at: fileURL, sourceURL: videoURL, mediaID: mediaID)
                 DockProgressPresenter.clear()
@@ -583,6 +583,8 @@ struct FreightpassDownloadModal: View {
 struct FreightpassWebView: NSViewRepresentable {
     let url: URL
     let videoURL: String
+    let mediaID: String
+    let statusBaseURL: String
     let onDownloadComplete: (URL) -> Void
 
     func makeNSView(context: Context) -> WKWebView {
@@ -596,6 +598,8 @@ struct FreightpassWebView: NSViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         context.coordinator.videoURL = videoURL
+        context.coordinator.mediaID = mediaID
+        context.coordinator.statusBaseURL = statusBaseURL
         context.coordinator.onDownloadComplete = onDownloadComplete
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
@@ -607,6 +611,8 @@ struct FreightpassWebView: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onDownloadComplete = onDownloadComplete
+        context.coordinator.mediaID = mediaID
+        context.coordinator.statusBaseURL = statusBaseURL
         guard context.coordinator.videoURL != videoURL else { return }
         context.coordinator.videoURL = videoURL
         webView.loadHTMLString(Self.widgetHTML(for: videoURL), baseURL: url)
@@ -622,6 +628,8 @@ struct FreightpassWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
         var videoURL = ""
+        var mediaID = ""
+        var statusBaseURL = ""
         var onDownloadComplete: ((URL) -> Void)?
         private var downloadDestinations: [ObjectIdentifier: URL] = [:]
         private var lastDockStage = ""
@@ -683,6 +691,7 @@ struct FreightpassWebView: NSViewRepresentable {
             }
             print("DEBUG: ClickAPI widget download finished: \(destination.path)")
             DockProgressPresenter.update(stage: "Done", percent: 100)
+            publishDownloadStatus(stage: "Done", percent: 100)
             if !didBounceForDownloadComplete {
                 didBounceForDownloadComplete = true
                 DockProgressPresenter.bounce()
@@ -693,6 +702,7 @@ struct FreightpassWebView: NSViewRepresentable {
         func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
             downloadDestinations.removeValue(forKey: ObjectIdentifier(download))
             print("DEBUG: ClickAPI widget download failed: \(error.localizedDescription)")
+            publishDownloadStatus(stage: "failed", percent: 0, error: error.localizedDescription)
             DockProgressPresenter.clear()
         }
 
@@ -709,6 +719,7 @@ struct FreightpassWebView: NSViewRepresentable {
             lastDockPercent = rounded
             print("DEBUG: ClickAPI progress \(stage) \(rounded)%")
             DockProgressPresenter.update(stage: stage, percent: percent)
+            publishDownloadStatus(stage: stage, percent: percent)
             if stage == "Ready", !didBounceForReady {
                 didBounceForReady = true
                 DockProgressPresenter.bounce()
@@ -717,6 +728,41 @@ struct FreightpassWebView: NSViewRepresentable {
                 didBounceForDownloadComplete = true
                 DockProgressPresenter.bounce()
             }
+        }
+
+        private func publishDownloadStatus(stage: String, percent: Double, error: String = "") {
+            guard !mediaID.isEmpty,
+                  !statusBaseURL.isEmpty,
+                  let endpoint = URL(string: "\(statusBaseURL)/api/offloaded/download-status") else {
+                return
+            }
+            let normalizedStatus: String
+            switch stage.lowercased() {
+            case "converting", "working":
+                normalizedStatus = "converting"
+            case "ready":
+                normalizedStatus = "ready"
+            case "downloading":
+                normalizedStatus = "downloading"
+            case "done", "completed":
+                normalizedStatus = "completed"
+            case "failed":
+                normalizedStatus = "failed"
+            default:
+                normalizedStatus = "resolving"
+            }
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body: [String: Any] = [
+                "mediaId": mediaID,
+                "status": normalizedStatus,
+                "fraction": max(0.0, min(percent / 100.0, 1.0)),
+                "sourceUrl": videoURL,
+                "error": error,
+            ]
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            URLSession.shared.dataTask(with: request).resume()
         }
 
         private static func uniqueDownloadURL(for filename: String) -> URL {
@@ -905,7 +951,6 @@ struct FreightpassWebView: NSViewRepresentable {
         if (!target) return;
         const text = ((target.innerText || target.value || target.getAttribute('aria-label') || '') + '').trim().toLowerCase();
         if (text.includes('download')) {
-          event.preventDefault();
           sessionStorage.setItem('bolttubeUserDownloadClick', '1');
           document.body.classList.remove('bolttube-waiting');
           document.documentElement.classList.remove('bolttube-page-loading');
@@ -914,9 +959,6 @@ struct FreightpassWebView: NSViewRepresentable {
       document.addEventListener('submit', (event) => {
         const submitter = event.submitter;
         const text = ((submitter?.innerText || submitter?.value || submitter?.getAttribute?.('aria-label') || '') + '').trim().toLowerCase();
-        if (text.includes('download')) {
-          event.preventDefault();
-        }
         sessionStorage.setItem('bolttubeUserDownloadClick', '1');
         document.body.classList.remove('bolttube-waiting');
         document.documentElement.classList.remove('bolttube-page-loading');
@@ -1038,7 +1080,6 @@ struct FreightpassWebView: NSViewRepresentable {
         if (!target) return;
         const text = ((target.innerText || target.value || target.getAttribute('aria-label') || '') + '').trim().toLowerCase();
         if (text.includes('download')) {
-          event.preventDefault();
           sessionStorage.setItem('bolttubeUserDownloadClick', '1');
           document.body.classList.remove('bolttube-waiting');
           document.documentElement.classList.remove('bolttube-page-loading');
@@ -1047,9 +1088,6 @@ struct FreightpassWebView: NSViewRepresentable {
       document.addEventListener('submit', (event) => {
         const submitter = event.submitter;
         const text = ((submitter?.innerText || submitter?.value || submitter?.getAttribute?.('aria-label') || '') + '').trim().toLowerCase();
-        if (text.includes('download')) {
-          event.preventDefault();
-        }
         sessionStorage.setItem('bolttubeUserDownloadClick', '1');
         document.body.classList.remove('bolttube-waiting');
         document.documentElement.classList.remove('bolttube-page-loading');

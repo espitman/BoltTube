@@ -5,8 +5,6 @@ import android.view.View
 import android.widget.TextView
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.viewModels
-import androidx.fragment.app.commit
-import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -24,9 +22,9 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
         setContentView(R.layout.activity_main)
 
         (supportFragmentManager.findFragmentByTag("server_config") as? ServerConfigDialogFragment)?.let { dialog ->
-            supportFragmentManager.commitNow {
-                remove(dialog)
-            }
+            supportFragmentManager.beginTransaction()
+                .remove(dialog)
+                .commitNow()
         }
 
         channelAdapter = SidebarChannelAdapter { channel ->
@@ -51,10 +49,10 @@ class MainActivity : FragmentActivity(), ServerConfigDialogFragment.Listener {
         }
 
         if (savedInstanceState == null) {
-            supportFragmentManager.commit {
-                setReorderingAllowed(true)
-                replace(R.id.rowsContainer, TvBrowseFragment())
-            }
+            supportFragmentManager.beginTransaction()
+                .setReorderingAllowed(true)
+                .replace(R.id.rowsContainer, TvBrowseFragment())
+                .commit()
         }
 
         homeButton.post {

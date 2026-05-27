@@ -5,10 +5,21 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 private const val PREFS_NAME = "bolttube_tv_prefs"
 private const val SERVER_URL_KEY = "server_url"
@@ -18,6 +29,11 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MediaRepository()
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private var liveSyncJob: Job? = null
+    private var realtimeJob: Job? = null
+    private var realtimeConnected = false
+    private val realtimeCommands = MutableSharedFlow<String>(extraBufferCapacity = 32)
+    private val json = Json { ignoreUnknownKeys = true }
     private val _uiState = MutableStateFlow(
         TvUiState(serverUrl = prefs.getString(SERVER_URL_KEY, DEFAULT_SERVER_URL).orEmpty()),
     )
@@ -25,6 +41,8 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         refreshAll()
+        startRealtimeSocket()
+        startLiveSync()
     }
 
     fun refreshLibrary() {
@@ -89,9 +107,122 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         refreshChannels()
     }
 
+    private fun startLiveSync() {
+        if (liveSyncJob?.isActive == true) return
+        liveSyncJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(1_500)
+                silentRefreshLibrary()
+                pollVisibleDownloadStatuses()
+            }
+        }
+    }
+
+    private fun startRealtimeSocket() {
+        realtimeJob?.cancel()
+        realtimeJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+                runCatching {
+                    realtimeConnected = false
+                    repository.observeRealtime(serverUrl, realtimeCommands, ::handleRealtimeEvent)
+                }
+                realtimeConnected = false
+                delay(1_500)
+            }
+        }
+    }
+
+    private suspend fun handleRealtimeEvent(event: JsonObject) {
+        when (event["type"]?.jsonPrimitive?.contentOrNull) {
+            "connected", "library_snapshot", "library_updated" -> {
+                if (event["type"]?.jsonPrimitive?.contentOrNull == "connected") {
+                    realtimeConnected = true
+                }
+                val itemsElement = event["items"] ?: return
+                val items = json.decodeFromJsonElement(ListSerializer(MediaSummary.serializer()), itemsElement)
+                _uiState.value = _uiState.value.copy(
+                    library = items,
+                    loading = false,
+                    error = "",
+                    message = if (event["type"]?.jsonPrimitive?.contentOrNull == "library_updated") "Library updated." else _uiState.value.message,
+                )
+            }
+            "download_status" -> {
+                val mediaId = event["mediaId"]?.jsonPrimitive?.contentOrNull ?: return
+                val statusElement = event["status"] ?: return
+                val status = json.decodeFromJsonElement<OffloadedDownloadStatus>(statusElement)
+                val next = _uiState.value.downloadStatuses.toMutableMap()
+                if (status.status == "idle" && status.fraction <= 0.0) {
+                    next.remove(mediaId)
+                } else {
+                    next[mediaId] = status
+                }
+                _uiState.value = _uiState.value.copy(downloadStatuses = next)
+            }
+            "action_result" -> {
+                val ok = event["ok"]?.jsonPrimitive?.contentOrNull == "true"
+                _uiState.value = _uiState.value.copy(
+                    message = if (ok) "Action completed." else "",
+                    error = if (ok) "" else "Action failed.",
+                )
+            }
+        }
+    }
+
+    private suspend fun silentRefreshLibrary() {
+        val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        runCatching {
+            repository.fetchLibrary(serverUrl)
+        }.onSuccess { items ->
+            _uiState.value = _uiState.value.copy(
+                serverUrl = serverUrl,
+                library = items,
+                loading = false,
+                error = "",
+            )
+        }
+    }
+
+    private suspend fun pollVisibleDownloadStatuses() {
+        val state = _uiState.value
+        val serverUrl = state.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
+        val candidates = state.library.filter { !it.isDownloaded }
+        if (candidates.isEmpty()) {
+            if (state.downloadStatuses.isNotEmpty()) {
+                _uiState.value = state.copy(downloadStatuses = emptyMap())
+            }
+            return
+        }
+
+        val candidateIds = candidates.mapTo(mutableSetOf()) { it.id }
+        val nextStatuses = state.downloadStatuses.filterKeys { it in candidateIds }.toMutableMap()
+        candidates.forEach { item ->
+            runCatching {
+                repository.fetchOffloadedDownloadStatus(serverUrl, item.id)
+            }.onSuccess { status ->
+                if (status.status in ACTIVE_DOWNLOAD_STATES || status.fraction > 0.0) {
+                    nextStatuses[item.id] = status
+                } else {
+                    nextStatuses.remove(item.id)
+                }
+            }
+        }
+        if (nextStatuses != state.downloadStatuses) {
+            _uiState.value = _uiState.value.copy(downloadStatuses = nextStatuses)
+        }
+    }
+
     fun deleteItem(mediaId: String) {
         val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
         _uiState.value = _uiState.value.copy(error = "", message = "Deleting video...")
+        if (realtimeConnected && realtimeCommands.tryEmit(
+                buildJsonObject {
+                    put("type", "delete_item")
+                    put("mediaId", mediaId)
+                }.toString(),
+            )
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 repository.deleteItem(serverUrl, mediaId)
@@ -113,6 +244,13 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     fun offloadItem(mediaId: String) {
         val serverUrl = _uiState.value.serverUrl.trim().ifBlank { DEFAULT_SERVER_URL }
         _uiState.value = _uiState.value.copy(error = "", message = "Offloading video...")
+        if (realtimeConnected && realtimeCommands.tryEmit(
+                buildJsonObject {
+                    put("type", "offload_item")
+                    put("mediaId", mediaId)
+                }.toString(),
+            )
+        ) return
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 repository.offloadItem(serverUrl, mediaId)
@@ -227,6 +365,7 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
         val normalized = url.trim().ifBlank { DEFAULT_SERVER_URL }.trimEnd('/')
         prefs.edit().putString(SERVER_URL_KEY, normalized).apply()
         _uiState.value = _uiState.value.copy(serverUrl = normalized, message = "Server updated.", error = "")
+        startRealtimeSocket()
         refreshAll()
     }
 
@@ -239,7 +378,22 @@ class TvViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        liveSyncJob?.cancel()
+        realtimeJob?.cancel()
         repository.close()
         super.onCleared()
+    }
+
+    companion object {
+        private val ACTIVE_DOWNLOAD_STATES = setOf(
+            "queued",
+            "resolving",
+            "converting",
+            "ready",
+            "downloading",
+            "merging",
+            "completed",
+            "failed",
+        )
     }
 }

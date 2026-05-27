@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application") version "8.7.0"
+    id("com.android.application") version "8.7.3"
     id("org.jetbrains.kotlin.android") version "1.9.24"
     id("org.jetbrains.kotlin.plugin.serialization") version "1.9.24"
 }
@@ -60,20 +60,21 @@ android {
 
 dependencies {
     val ktorVersion = "2.3.12"
-    val media3Version = "1.5.1"
+    val media3Version = "1.4.1"
 
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.fragment:fragment-ktx:1.8.5")
+    implementation("androidx.fragment:fragment:1.5.1")
     implementation("androidx.activity:activity-ktx:1.9.3")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-    implementation("androidx.leanback:leanback:1.2.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx-android:2.8.3")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3")
+    implementation("androidx.lifecycle:lifecycle-livedata:2.8.3")
+    implementation("androidx.recyclerview:recyclerview:1.3.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.0")
 
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-okhttp:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+    implementation("io.ktor:ktor-client-websockets:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 

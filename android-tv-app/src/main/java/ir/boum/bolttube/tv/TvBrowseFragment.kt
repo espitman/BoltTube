@@ -11,8 +11,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
@@ -23,7 +23,9 @@ import kotlinx.coroutines.launch
 
 class TvBrowseFragment : Fragment() {
 
-    val viewModel: TvViewModel by activityViewModels()
+    val viewModel: TvViewModel by lazy(LazyThreadSafetyMode.NONE) {
+        ViewModelProvider(requireActivity())[TvViewModel::class.java]
+    }
 
     private lateinit var libraryContent: View
     private lateinit var channelDetailContent: View
@@ -190,7 +192,9 @@ class TvBrowseFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
-                    val libraryItems = state.library.sortedByDescending { it.createdAt }.map(::mediaToVideoItem)
+                    val libraryItems = state.library
+                        .sortedByDescending { it.createdAt }
+                        .map { mediaToVideoItem(it, state.downloadStatuses[it.id]) }
                     libraryAdapter.submit(libraryItems)
                     emptyView.visibility = if (libraryItems.isEmpty() && state.selectedChannel == null && state.selectedPlaylist == null) View.VISIBLE else View.GONE
 
@@ -210,7 +214,9 @@ class TvBrowseFragment : Fragment() {
                                     .into(playlistHeroImage)
                             }
 
-                            val items = state.playlistContent.sortedByDescending { it.createdAt }.map(::mediaToVideoItem)
+                            val items = state.playlistContent
+                                .sortedByDescending { it.createdAt }
+                                .map { mediaToVideoItem(it, state.downloadStatuses[it.id]) }
                             playlistAdapter.submit(items)
                             if (!state.playlistLoading && items.isNotEmpty()) {
                                 playlistGrid.post {
@@ -237,7 +243,10 @@ class TvBrowseFragment : Fragment() {
                             val sectionModels = state.channelContent.map { section ->
                                 TvChannelSectionModel(
                                     title = section.playlist.name,
-                                    items = section.items.sortedByDescending { it.createdAt }.take(10).map(::mediaToVideoItem),
+                                    items = section.items
+                                        .sortedByDescending { it.createdAt }
+                                        .take(10)
+                                        .map { mediaToVideoItem(it, state.downloadStatuses[it.id]) },
                                     playlist = section.playlist,
                                 )
                             }
@@ -270,7 +279,7 @@ class TvBrowseFragment : Fragment() {
         }
     }
 
-    private fun mediaToVideoItem(item: MediaSummary): VideoItem {
+    private fun mediaToVideoItem(item: MediaSummary, downloadStatus: OffloadedDownloadStatus? = null): VideoItem {
         val displayTitle = item.title.ifBlank {
             item.fileName.removeSuffix(".mp4")
                 .replaceFirst(Regex("^\\d+[\\s._\\-]*"), "")
@@ -287,6 +296,7 @@ class TvBrowseFragment : Fragment() {
             createdAt = item.createdAt,
             duration = item.duration,
             isOffloaded = !item.isDownloaded,
+            downloadStatus = downloadStatus,
         )
     }
 
@@ -439,7 +449,18 @@ private class TvVideoCardAdapter(
                 badgeView.visibility = View.GONE
             }
 
-            uploadBadgeView.visibility = if (item.isOffloaded) View.VISIBLE else View.GONE
+            val activeDownload = item.downloadStatus?.takeIf { it.isVisibleOnCard() }
+            uploadBadgeView.visibility = if (item.isOffloaded || activeDownload != null) View.VISIBLE else View.GONE
+            uploadBadgeView.text = when {
+                activeDownload?.status == "failed" -> "FAILED"
+                activeDownload?.status == "converting" -> "CV ${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
+                activeDownload?.status == "ready" -> "READY"
+                activeDownload?.status == "downloading" -> "DL ${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
+                activeDownload?.status == "completed" -> "DONE"
+                activeDownload != null -> "${(activeDownload.fraction * 100).toInt().coerceIn(0, 100)}%"
+                item.isOffloaded -> "OFFLOADED"
+                else -> ""
+            }
             imageView.alpha = if (item.isOffloaded) 0.5f else 1f
 
             try {
@@ -458,12 +479,26 @@ private class TvVideoCardAdapter(
                 .error(android.R.color.transparent)
                 .into(imageView)
 
-            updateProgress(item.id)
+            updateProgress(item)
         }
 
-        private fun updateProgress(id: String) {
-            val pos = prefs.getLong("progress_$id", 0)
-            val dur = prefs.getLong("duration_$id", 0)
+        private fun updateProgress(item: VideoItem) {
+            val activeDownload = item.downloadStatus?.takeIf { it.isVisibleOnCard() }
+            if (activeDownload != null) {
+                val percent = activeDownload.fraction.coerceIn(0.0, 1.0)
+                progressBg.visibility = View.VISIBLE
+                progressFill.visibility = View.VISIBLE
+                progressFill.post {
+                    val fullWidth = progressBg.width
+                    val params = progressFill.layoutParams
+                    params.width = (fullWidth * percent).toInt().coerceAtLeast(if (percent > 0.0) 1 else 0)
+                    progressFill.layoutParams = params
+                }
+                return
+            }
+
+            val pos = prefs.getLong("progress_${item.id}", 0)
+            val dur = prefs.getLong("duration_${item.id}", 0)
 
             if (dur > 0 && pos > 0) {
                 progressBg.visibility = View.VISIBLE
@@ -480,6 +515,10 @@ private class TvVideoCardAdapter(
                 progressBg.visibility = View.GONE
                 progressFill.visibility = View.GONE
             }
+        }
+
+        private fun OffloadedDownloadStatus.isVisibleOnCard(): Boolean {
+            return status in setOf("queued", "resolving", "converting", "ready", "downloading", "merging", "completed", "failed") || fraction > 0.0
         }
 
         private fun formatCreatedDate(createdAt: String): String {

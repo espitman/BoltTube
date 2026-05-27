@@ -1,29 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BoltTubeTV" parent="Theme.AppCompat.NoActionBar">
+    <style name="Theme.BoltTubeTV" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">@font/vazir</item>
-        <item name="fontFamily">@font/vazir</item>
         <item name="android:windowBackground">@color/tv_background</item>
         <item name="android:colorBackground">@color/tv_background</item>
         <item name="android:windowIsTranslucent">false</item>
         <item name="android:windowContentTransitions">false</item>
-        <item name="defaultBrandColor">@color/tv_accent</item>
-        <item name="defaultBrandColorDark">@color/tv_accent</item>
-        <item name="defaultSearchBrightColor">@color/tv_focus</item>
-        <item name="defaultSearchColor">@color/tv_surface_alt</item>
     </style>
 
-    <style name="Theme.BoltTubeTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+    <style name="Theme.BoltTubeTV.Dialog" parent="@android:style/Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@color/tv_surface</item>
         <item name="android:textColorPrimary">@color/tv_text_header</item>
         <item name="android:textColorSecondary">@color/tv_muted</item>
-        <item name="colorAccent">@color/tv_focus</item>
         <item name="android:colorAccent">@color/tv_focus</item>
     </style>
 
     <style name="SidebarItem">
         <item name="android:fontFamily">@font/vazir</item>
-        <item name="fontFamily">@font/vazir</item>
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_marginBottom">4dp</item>

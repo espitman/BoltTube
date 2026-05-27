@@ -241,6 +241,7 @@ final class ServerController {
             let response = try decoder.decode(DownloadResponse.self, from: data)
             appendLog("Imported downloaded file: \(response.fileName)")
             await refreshLibrary()
+            await notifyRealtimeLibraryUpdated(reason: "import_file")
             videoURL = ""
             resetResolvedVideoState()
         } catch {
@@ -288,6 +289,7 @@ final class ServerController {
             let response = try decoder.decode(DownloadResponse.self, from: data)
             appendLog("Imported ClickAPI download: \(response.fileName)")
             await refreshLibrary()
+            await notifyRealtimeLibraryUpdated(reason: "clickapi_import")
             videoURL = ""
             resetResolvedVideoState()
         } catch {
@@ -344,7 +346,7 @@ final class ServerController {
             }
             let data = try await runDownloadCommand(arguments: arguments)
             let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(DownloadResponse.self, from: data)
-            lastDownloadedFileName = response.fileName; downloadProgress = 1; downloadProgressText = "Download complete"; appendLog("Saved \(response.fileName)"); await refreshLibrary(); videoURL = ""; resetResolvedVideoState(); return true
+            lastDownloadedFileName = response.fileName; downloadProgress = 1; downloadProgressText = "Download complete"; appendLog("Saved \(response.fileName)"); await refreshLibrary(); await notifyRealtimeLibraryUpdated(reason: "download_complete"); videoURL = ""; resetResolvedVideoState(); return true
         } catch { appendLog("Download failed: \(error.localizedDescription)"); downloadProgressText = "Download failed"; return false }
     }
 
@@ -356,11 +358,10 @@ final class ServerController {
         isAddingOffloaded = true
         defer { isBusy = false; isAddingOffloaded = false }
         do {
-            let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "add-offloaded", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false)
-            let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let response = try decoder.decode(DownloadResponse.self, from: data)
+            let response = try await createOffloadedItem(url: url)
             appendLog("Added offloaded item: \(response.fileName)")
             await refreshLibrary()
+            await notifyRealtimeLibraryUpdated(reason: "add_offloaded")
             videoURL = ""
             resetResolvedVideoState()
         } catch {
@@ -379,12 +380,16 @@ final class ServerController {
         defer { isBusy = false; isAddingOffloaded = false }
 
         do {
-            let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "add-offloaded", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false)
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let response = try decoder.decode(DownloadResponse.self, from: data)
+            let response = try await createOffloadedItem(url: url)
             appendLog("Prepared ClickAPI download item: \(response.fileName)")
             await refreshLibrary()
+            await notifyRealtimeLibraryUpdated(reason: "prepare_clickapi")
+            await notifyOffloadedDownloadStatus(
+                mediaID: response.id,
+                status: "converting",
+                fraction: 0,
+                sourceURL: url
+            )
             return response.id
         } catch {
             appendLog("Prepare ClickAPI item failed: \(error.localizedDescription)")
@@ -511,7 +516,63 @@ final class ServerController {
 
     func stopShareServer() { shareServerOutputPipe?.fileHandleForReading.readabilityHandler = nil; shareServerProcess?.terminate(); shareServerProcess = nil; shareServerOutputPipe = nil; isShareServerRunning = false; if sleepAssertionID != 0 { IOPMAssertionRelease(sleepAssertionID); sleepAssertionID = 0 } }
     func checkHealth() async { guard let url = URL(string: "\(serverURLDisplay)/health") else { return }; do { let (data, _) = try await URLSession.shared.data(from: url); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let decoded = try decoder.decode(HealthResponse.self, from: data); lastHealthMessage = "Share server OK on port \(decoded.port)."; appendLog(lastHealthMessage) } catch { lastHealthMessage = "Health check failed."; appendLog(lastHealthMessage) } }
-    private func ensurePythonReady() async -> Bool { if FileManager.default.fileExists(atPath: venvPythonURL.path) { return true }; appendLog("Preparing Python..."); await installPythonEnvironment(); return FileManager.default.fileExists(atPath: venvPythonURL.path) }
+    private func notifyRealtimeLibraryUpdated(reason: String) async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/realtime/library-updated") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["reason": reason])
+        _ = try? await URLSession.shared.data(for: request)
+    }
+    private func createOffloadedItem(url: String) async throws -> DownloadResponse {
+        let request = buildPOSTRequest(endpoint: "/api/add-offloaded", body: [
+            "url": url,
+            "title": resolvedTitle,
+            "thumbnailUrl": resolvedThumbnailUrl,
+            "durationSeconds": resolvedDurationSeconds,
+            "preferredClient": resolvedClient,
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+            throw NSError(domain: "BoltTube", code: (response as? HTTPURLResponse)?.statusCode ?? -1)
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(DownloadResponse.self, from: data)
+    }
+    private func notifyOffloadedDownloadStatus(mediaID: String, status: String, fraction: Double, sourceURL: String, error: String = "") async {
+        guard let url = URL(string: "\(serverURLDisplay)/api/offloaded/download-status") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "mediaId": mediaID,
+            "status": status,
+            "fraction": max(0.0, min(fraction, 1.0)),
+            "sourceUrl": sourceURL,
+            "error": error,
+        ])
+        _ = try? await URLSession.shared.data(for: request)
+    }
+    private func ensurePythonReady() async -> Bool {
+        if FileManager.default.fileExists(atPath: venvPythonURL.path) {
+            if await pythonModuleAvailable("flask_sock") { return true }
+            appendLog("Updating Python dependencies...")
+            await installPythonEnvironment()
+            return FileManager.default.fileExists(atPath: venvPythonURL.path)
+        }
+        appendLog("Preparing Python...")
+        await installPythonEnvironment()
+        return FileManager.default.fileExists(atPath: venvPythonURL.path)
+    }
+    private func pythonModuleAvailable(_ module: String) async -> Bool {
+        do {
+            try await runCommand(executable: venvPythonURL, arguments: ["-c", "import \(module)"])
+            return true
+        } catch {
+            return false
+        }
+    }
     private func installPythonEnvironment() async { do { ensureDirectoryExists(appSupportDirectory); ensureDirectoryExists(downloadDirectory); if !FileManager.default.fileExists(atPath: venvPythonURL.path) { try await runCommand(executable: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-m", "venv", venvDirectory.path]) }; try await runCommand(executable: venvPipURL, arguments: ["install", "-r", requirementsURL.path]); appendLog("Python ready.") } catch { appendLog("Python setup failed.") } }
     private func resolveMetadata(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingMetadata = true; defer { isResolvingMetadata = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "metadata", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(MetadataResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds } catch { appendLog("Metadata load failed.") } }
     private func resolveQualities(for url: String) async { guard await ensurePythonReady() else { return }; isResolvingQualities = true; defer { isResolvingQualities = false }; do { let data = try await runJSONCommand(arguments: [bridgeScriptURL.path, "resolve", "--download-dir", downloadDirectory.path, "--url", url], logOutput: false); let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase; let response = try decoder.decode(ResolveResponse.self, from: data); guard videoURL.trimmingCharacters(in: .whitespacesAndNewlines) == url else { return }; let previousSelection = selectedFormatID; resolvedTitle = response.title; resolvedThumbnailUrl = response.thumbnailUrl; resolvedDurationSeconds = response.durationSeconds; resolvedClient = response.resolvedClient; formats = response.formats; selectedFormatID = response.formats.contains(where: { $0.id == previousSelection }) ? previousSelection : (response.formats.last?.id ?? "best") } catch { appendLog("Quality load failed.") } }

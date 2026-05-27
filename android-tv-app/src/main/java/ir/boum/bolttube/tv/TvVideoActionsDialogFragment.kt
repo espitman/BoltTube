@@ -8,11 +8,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 
 class TvVideoActionsDialogFragment : DialogFragment() {
 
-    private val viewModel: TvViewModel by activityViewModels()
+    private val viewModel: TvViewModel by lazy(LazyThreadSafetyMode.NONE) {
+        ViewModelProvider(requireActivity())[TvViewModel::class.java]
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
